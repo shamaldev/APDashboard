@@ -1,12 +1,17 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import env from './env';
 
-// Create axios instance with custom config
+/**
+ * Axios Instance Configuration
+ * Centralized HTTP client with interceptors for auth and error handling
+ */
 const axiosInstance = axios.create({
-    baseURL: 'https://perspective-infinite-census-marilyn.trycloudflare.com/api/v1',
-    timeout: 30000, // 30 seconds
+    baseURL: env.API_BASE_URL,
+    timeout: env.API_TIMEOUT,
     headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
     }
 });
 
