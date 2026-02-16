@@ -1,84 +1,98 @@
 /**
  * CashFlowChart Component
- * Line chart for monthly cash outflows with time filter
+ * Dynamic chart for monthly cash outflows with time filter
+ * Fetches data from /api/v1/cash-outflow/forecast/{period_type}
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Sparkles } from 'lucide-react'
 import { CHART_COLORS } from '../../utils/constants'
+import AIChartQueryModal from '../modals/AIChartQueryModal'
+import ChartCanvas from './ChartCanvas'
+import { authFetch } from '../../utils/auth'
 
 const TIME_FILTERS = [
-  { key: '30d', label: '30 Days' },
-  { key: '90d', label: '90 Days' },
-  { key: 'ytd', label: 'YTD' }
+  { key: '30_DAY', label: '30 Days' },
+  { key: '90_DAY', label: '90 Days' },
+  { key: 'YTD', label: 'YTD' }
 ]
 
-const CashFlowChart = ({ data, loading }) => {
+const LINE_COLORS = {
+  actual: '#b4862e',     // amber - actual payments
+  projected: '#60a5fa',  // blue - projected payments
+  budget: '#94a3b8'      // slate - budget target
+}
+
+// Format large numbers (defined outside component to avoid stale closures)
+const formatUSD = (val) => {
+  if (val == null || isNaN(val)) return '$0'
+  if (val >= 1e9) return `$${(val / 1e9).toFixed(1)}B`
+  if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`
+  if (val >= 1e3) return `$${(val / 1e3).toFixed(0)}K`
+  return `$${val.toFixed(0)}`
+}
+
+
+const CashFlowChart = ({ loading: initialLoading }) => {
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
-  const [activeFilter, setActiveFilter] = useState('ytd')
-  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, value: '', label: '' })
+  const [activeFilter, setActiveFilter] = useState('YTD')
+  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, lines: [] })
   const pointsRef = useRef([])
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [chartType, setChartType] = useState('line_chart')
+  const [chartConfig, setChartConfig] = useState({
+    x_axis_col_name: 'date_label',
+    y_axis_col_name: ['cumulative_actual_usd', 'cumulative_projected_usd', 'cumulative_budget_usd'],
+    title: 'Monthly Cash Outflows'
+  })
 
-  // Fix year in month labels if they show future dates (e.g., Dec 2026 should be Dec 2025)
-  const correctedData = useMemo(() => {
-    if (!data || data.length === 0) return []
+  // API data state
+  const [forecastData, setForecastData] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth() // 0-indexed
-
-    const monthMap = {
-      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-    }
-
-    return data.map(d => {
-      if (d.month) {
-        const parts = d.month.split(' ')
-        if (parts.length === 2) {
-          const monthName = parts[0]
-          const year = parseInt(parts[1])
-          const monthIndex = monthMap[monthName]
-
-          // If the date is in the future, correct the year
-          if (year > currentYear || (year === currentYear && monthIndex > currentMonth)) {
-            return { ...d, month: `${monthName} ${year - 1}` }
-          }
-        }
+  // Fetch forecast data from backend
+  const fetchForecast = useCallback(async (periodType) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await authFetch(`/cash-outflow/forecast/${periodType}`)
+      const result = await response.json()
+      if (result.success) {
+        setForecastData(result.data)
+        setSummary(result.summary)
+      } else {
+        setError(result.error || 'Failed to fetch forecast')
+        setForecastData([])
+        setSummary(null)
       }
-      return d
-    })
-  }, [data])
-
-  // Filter data based on selected time range
-  const filteredData = useMemo(() => {
-    if (!correctedData || correctedData.length === 0) return []
-
-    const now = new Date()
-    const currentYear = now.getFullYear()
-
-    switch (activeFilter) {
-      case '30d':
-        return correctedData.slice(-1) // Last month
-      case '90d':
-        return correctedData.slice(-3) // Last 3 months
-      case 'ytd':
-      default:
-        // Filter data for current year
-        return correctedData.filter(d => {
-          if (d.month) {
-            const monthYear = d.month.split(' ')
-            if (monthYear.length === 2) {
-              return parseInt(monthYear[1]) === currentYear
-            }
-          }
-          return true
-        })
+    } catch (err) {
+      console.error('Cash outflow fetch error:', err)
+      setError(err.message || 'Failed to fetch forecast')
+      setForecastData([])
+      setSummary(null)
+    } finally {
+      setLoading(false)
     }
-  }, [correctedData, activeFilter])
+  }, [])
 
+  // Fetch on mount and filter change
   useEffect(() => {
-    if (!filteredData || filteredData.length === 0 || !canvasRef.current || loading) return
+    fetchForecast(activeFilter)
+  }, [activeFilter, fetchForecast])
+
+  // Handle chart updates from AI
+  const handleChartUpdate = (updatedChart) => {
+    if (updatedChart.chart_type) setChartType(updatedChart.chart_type)
+    if (updatedChart.chart_config) setChartConfig(updatedChart.chart_config)
+    if (updatedChart.data) setForecastData(updatedChart.data)
+  }
+
+  // Draw multi-line chart
+  useEffect(() => {
+    if (!forecastData || forecastData.length === 0 || !canvasRef.current || loading) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
@@ -87,102 +101,179 @@ const CashFlowChart = ({ data, loading }) => {
       canvas.width = canvas.parentElement.offsetWidth
       canvas.height = canvas.parentElement.offsetHeight
 
-      const values = filteredData.map(d => d.total_outflow_inr || 0)
-      const labels = filteredData.map(d => d.month)
       const w = canvas.width
       const h = canvas.height
-      const pad = { t: 20, r: 20, b: 40, l: 70 }
-      const max = Math.max(...values) * 1.1 || 1
+      const pad = { t: 20, r: 20, b: 40, l: 80 }
+      const chartW = w - pad.l - pad.r
+      const chartH = h - pad.t - pad.b
+
+      // Compute max across all three series
+      let maxVal = 0
+      forecastData.forEach(d => {
+        maxVal = Math.max(maxVal,
+          d.cumulative_actual_usd || 0,
+          d.cumulative_projected_usd || 0,
+          d.cumulative_budget_usd || 0
+        )
+      })
+      maxVal = maxVal * 1.1 || 1
 
       ctx.clearRect(0, 0, w, h)
 
       // Grid lines
       ctx.strokeStyle = 'rgba(0,0,0,0.05)'
+      ctx.lineWidth = 1
       for (let i = 0; i <= 5; i++) {
-        const y = pad.t + (i / 5) * (h - pad.t - pad.b)
+        const y = pad.t + (i / 5) * chartH
         ctx.beginPath()
         ctx.moveTo(pad.l, y)
         ctx.lineTo(w - pad.r, y)
         ctx.stroke()
       }
 
-      // Line
-      ctx.strokeStyle = CHART_COLORS[0]
-      ctx.lineWidth = 2
+      const n = forecastData.length
+      const getX = (i) => pad.l + (i / (n - 1 || 1)) * chartW
+      const getY = (v) => pad.t + chartH - (v / maxVal) * chartH
+
+      // Find transition point (CURRENT index)
+      const currentIdx = forecastData.findIndex(d => d.period_status === 'CURRENT')
+
+      // --- Draw Budget line (dashed gray) ---
+      ctx.strokeStyle = LINE_COLORS.budget
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([6, 4])
       ctx.beginPath()
-      values.forEach((v, i) => {
-        const x = pad.l + (i / (values.length - 1 || 1)) * (w - pad.l - pad.r)
-        const y = pad.t + (h - pad.t - pad.b) - (v / max) * (h - pad.t - pad.b)
+      forecastData.forEach((d, i) => {
+        const x = getX(i)
+        const y = getY(d.cumulative_budget_usd || 0)
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
       })
       ctx.stroke()
+      ctx.setLineDash([])
 
-      // Fill area
-      ctx.fillStyle = 'rgba(180,134,46,0.1)'
+      // --- Draw Actual line (solid amber, up to CURRENT) ---
+      const actualEnd = currentIdx >= 0 ? currentIdx : n - 1
+      ctx.strokeStyle = LINE_COLORS.actual
+      ctx.lineWidth = 2.5
       ctx.beginPath()
-      ctx.moveTo(pad.l, h - pad.b)
-      values.forEach((v, i) => {
-        const x = pad.l + (i / (values.length - 1 || 1)) * (w - pad.l - pad.r)
-        ctx.lineTo(x, pad.t + (h - pad.t - pad.b) - (v / max) * (h - pad.t - pad.b))
-      })
-      ctx.lineTo(w - pad.r, h - pad.b)
+      for (let i = 0; i <= actualEnd; i++) {
+        const x = getX(i)
+        const y = getY(forecastData[i].cumulative_actual_usd || 0)
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+
+      // Fill under actual
+      ctx.fillStyle = 'rgba(180,134,46,0.08)'
+      ctx.beginPath()
+      ctx.moveTo(getX(0), pad.t + chartH)
+      for (let i = 0; i <= actualEnd; i++) {
+        ctx.lineTo(getX(i), getY(forecastData[i].cumulative_actual_usd || 0))
+      }
+      ctx.lineTo(getX(actualEnd), pad.t + chartH)
       ctx.closePath()
       ctx.fill()
 
-      // Points and store positions for tooltips
-      ctx.fillStyle = CHART_COLORS[0]
-      const points = []
-      values.forEach((v, i) => {
-        const x = pad.l + (i / (values.length - 1 || 1)) * (w - pad.l - pad.r)
-        const y = pad.t + (h - pad.t - pad.b) - (v / max) * (h - pad.t - pad.b)
+      // --- Draw Projected line (dashed blue, from CURRENT onward) ---
+      const projStart = currentIdx >= 0 ? currentIdx : 0
+      if (projStart < n - 1) {
+        ctx.strokeStyle = LINE_COLORS.projected
+        ctx.lineWidth = 2
+        ctx.setLineDash([5, 3])
         ctx.beginPath()
-        ctx.arc(x, y, 4, 0, Math.PI * 2)
-        ctx.fill()
-        points.push({ x, y, value: v, label: labels[i] })
+        for (let i = projStart; i < n; i++) {
+          const projVal = (forecastData[i].cumulative_actual_usd || 0) +
+                          (forecastData[i].cumulative_projected_usd || 0)
+          const x = getX(i)
+          const y = getY(projVal)
+          i === projStart ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+        }
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
+
+      // --- Points and tooltip data ---
+      const allPoints = []
+      forecastData.forEach((d, i) => {
+        const x = getX(i)
+        const actual = d.cumulative_actual_usd || 0
+        const projected = d.cumulative_projected_usd || 0
+        const budget = d.cumulative_budget_usd || 0
+
+        // Actual point (only for ACTUAL/CURRENT)
+        if (d.period_status !== 'PROJECTED') {
+          ctx.fillStyle = LINE_COLORS.actual
+          ctx.beginPath()
+          ctx.arc(x, getY(actual), 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // Projected point (only for PROJECTED/CURRENT)
+        if (d.period_status !== 'ACTUAL') {
+          const projTotal = actual + projected
+          ctx.fillStyle = LINE_COLORS.projected
+          ctx.beginPath()
+          ctx.arc(x, getY(projTotal), 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        allPoints.push({
+          x, label: d.date_label,
+          actual, projected, budget,
+          status: d.period_status
+        })
       })
-      pointsRef.current = points
+      pointsRef.current = allPoints
 
       // X-axis labels
       ctx.fillStyle = '#64748b'
       ctx.font = '10px sans-serif'
       ctx.textAlign = 'center'
-      labels.forEach((l, i) => {
-        if (i % 2 === 0 || labels.length <= 6) {
-          const x = pad.l + (i / (labels.length - 1 || 1)) * (w - pad.l - pad.r)
-          ctx.fillText(l, x, h - 10)
+      const labelStep = n > 15 ? Math.ceil(n / 10) : (n > 6 ? 2 : 1)
+      forecastData.forEach((d, i) => {
+        if (i % labelStep === 0 || i === n - 1) {
+          ctx.fillText(d.date_label, getX(i), h - 10)
         }
       })
 
       // Y-axis labels
       ctx.textAlign = 'right'
       for (let i = 0; i <= 5; i++) {
-        const v = max * (5 - i) / 5
-        ctx.fillText((v / 1e9).toFixed(1) + 'B', pad.l - 5, pad.t + (i / 5) * (h - pad.t - pad.b) + 4)
+        const v = maxVal * (5 - i) / 5
+        const y = pad.t + (i / 5) * chartH
+        ctx.fillText(formatUSD(v), pad.l - 5, y + 4)
       }
     }
 
     resize()
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
-  }, [filteredData, loading])
+  }, [forecastData, loading])
 
   const handleMouseMove = (e) => {
     if (!canvasRef.current || pointsRef.current.length === 0) return
     const rect = canvasRef.current.getBoundingClientRect()
     const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
 
-    const nearestPoint = pointsRef.current.find(p =>
-      Math.abs(p.x - mouseX) < 20 && Math.abs(p.y - mouseY) < 20
-    )
+    // Find nearest point by X
+    let nearest = null
+    let minDist = Infinity
+    pointsRef.current.forEach(p => {
+      const dist = Math.abs(p.x - mouseX)
+      if (dist < minDist) { minDist = dist; nearest = p }
+    })
 
-    if (nearestPoint) {
+    if (nearest && minDist < 30) {
       setTooltip({
         show: true,
-        x: nearestPoint.x,
-        y: nearestPoint.y - 10,
-        value: (nearestPoint.value / 1e9).toFixed(2) + 'B',
-        label: nearestPoint.label
+        x: nearest.x,
+        y: 20,
+        lines: [
+          { label: nearest.label, color: '#334155', bold: true },
+          { label: `Actual: ${formatUSD(nearest.actual)}`, color: LINE_COLORS.actual },
+          ...(nearest.projected > 0 ? [{ label: `Projected: ${formatUSD(nearest.actual + nearest.projected)}`, color: LINE_COLORS.projected }] : []),
+          { label: `Budget: ${formatUSD(nearest.budget)}`, color: LINE_COLORS.budget }
+        ]
       })
     } else {
       setTooltip(prev => prev.show ? { ...prev, show: false } : prev)
@@ -193,58 +284,159 @@ const CashFlowChart = ({ data, loading }) => {
     setTooltip(prev => prev.show ? { ...prev, show: false } : prev)
   }
 
+  // Prepare chart data for AI modal
+  const aiChartData = {
+    kpi: {
+      title: 'Monthly Cash Outflows',
+      description: 'Cash outflows forecast with actual vs projected vs budget',
+      chart_type: chartType
+    },
+    data: forecastData,
+    chart_type: chartType,
+    chart_config: chartConfig,
+    catalog: 'finance_fusion_catalog',
+    schema: 'finance_fusion_catalog',
+    persona: 'CFO'
+  }
+
+  const isLoading = loading || initialLoading
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
       <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-        <h3 className="font-serif text-base font-medium text-slate-900">Monthly Cash Outflows</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-serif text-base font-medium text-slate-900">Monthly Cash Outflows</h3>
+          <button
+            onClick={() => setShowAIModal(true)}
+            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 p-1 rounded transition-all"
+            title="Ask AI about this chart"
+          >
+            <Sparkles size={16} />
+          </button>
+        </div>
         {/* Time Filter Buttons */}
         <div className="flex bg-slate-100 rounded-lg p-0.5">
           {TIME_FILTERS.map(filter => (
             <button
               key={filter.key}
               onClick={() => setActiveFilter(filter.key)}
+              disabled={isLoading}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                 activeFilter === filter.key
                   ? 'bg-white text-amber-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+              } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {filter.label}
             </button>
           ))}
         </div>
       </div>
+
+      {/* Summary metrics bar */}
+      {summary && (
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-6 text-xs">
+          <div>
+            <span className="text-slate-500">Actual:</span>{' '}
+            <span className="font-semibold text-slate-800">{formatUSD(summary.total_actual_usd)}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Projected:</span>{' '}
+            <span className="font-semibold text-blue-600">{formatUSD(summary.total_projected_usd)}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Budget:</span>{' '}
+            <span className="font-semibold text-slate-600">{formatUSD(summary.total_budget_usd)}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Variance:</span>{' '}
+            <span className={`font-semibold ${(summary.variance_usd ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {(summary.variance_usd ?? 0) > 0 ? '+' : ''}{formatUSD(Math.abs(summary.variance_usd ?? 0))} ({(summary.variance_pct ?? 0) > 0 ? '+' : ''}{(summary.variance_pct ?? 0).toFixed(1)}%)
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="p-4">
-        <div
-          ref={containerRef}
-          className="h-52 relative"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-        >
-          {filteredData.length > 0 ? (
-            <>
-              <canvas ref={canvasRef} className="w-full h-full" />
-              {tooltip.show && (
-                <div
-                  className="absolute pointer-events-none bg-slate-900 text-white text-xs px-2 py-1 rounded shadow-lg z-10"
-                  style={{
-                    left: tooltip.x,
-                    top: tooltip.y,
-                    transform: 'translate(-50%, -100%)'
-                  }}
-                >
-                  <div className="font-medium">{tooltip.label}</div>
-                  <div className="text-amber-300">{tooltip.value}</div>
+        {isLoading ? (
+          <div className="h-52 flex items-center justify-center text-slate-400 text-sm">
+            <div className="animate-pulse">Loading forecast data...</div>
+          </div>
+        ) : error ? (
+          <div className="h-52 flex items-center justify-center text-red-400 text-sm">
+            {error}
+          </div>
+        ) : chartType === 'line_chart' ? (
+          <div
+            ref={containerRef}
+            className="h-52 relative"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+          >
+            {forecastData.length > 0 ? (
+              <>
+                <canvas ref={canvasRef} className="w-full h-full" />
+                {/* Legend */}
+                <div className="absolute top-1 right-1 flex items-center gap-3 text-[10px] text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5" style={{ backgroundColor: LINE_COLORS.actual }} />
+                    <span>Actual</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 border-t border-dashed" style={{ borderColor: LINE_COLORS.projected }} />
+                    <span>Projected</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 border-t border-dashed" style={{ borderColor: LINE_COLORS.budget }} />
+                    <span>Budget</span>
+                  </div>
                 </div>
-              )}
-            </>
+                {/* Tooltip */}
+                {tooltip.show && (
+                  <div
+                    className="absolute pointer-events-none bg-slate-900 text-white text-xs px-3 py-2 rounded shadow-lg z-10"
+                    style={{
+                      left: Math.min(tooltip.x, (containerRef.current?.offsetWidth || 300) - 160),
+                      top: tooltip.y,
+                      transform: 'translateX(-50%)'
+                    }}
+                  >
+                    {tooltip.lines.map((line, i) => (
+                      <div key={i} className={line.bold ? 'font-medium mb-1' : ''} style={{ color: line.bold ? '#fff' : line.color }}>
+                        {line.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                No data for selected period
+              </div>
+            )}
+          </div>
+        ) : (
+          forecastData.length > 0 ? (
+            <ChartCanvas
+              chartConfig={chartConfig}
+              data={forecastData}
+              chartType={chartType}
+              title={chartConfig.title}
+            />
           ) : (
-            <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-52 flex items-center justify-center text-slate-400 text-sm">
               No data for selected period
             </div>
-          )}
-        </div>
+          )
+        )}
       </div>
+
+      <AIChartQueryModal
+        isOpen={showAIModal}
+        onClose={() => setShowAIModal(false)}
+        chartData={aiChartData}
+        onChartUpdate={handleChartUpdate}
+      />
     </div>
   )
 }

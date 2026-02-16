@@ -620,11 +620,12 @@ export default function APDashboard() {
               if (data.message) setProgressMsg(data.message);
               if (data.status === 'card_ready' && data.card) setKpiCards(prev => prev.find(c => c.id === data.card.id) ? prev.map(c => c.id === data.card.id ? data.card : c) : [...prev, data.card]);
               if (data.status === 'alert_ready' && data.alert) setAlerts(prev => [...prev, data.alert]);
-              if (data.status === 'completed' && data.result) { setKpiCards(data.result.kpi_cards || []); setKpiResults(data.result.kpi_results || []); if (data.result.proactive_agents?.agent_findings) setAlerts(data.result.proactive_agents.agent_findings); setLoading(false); }
+              if (data.status === 'completed' && data.result) { if (data.result.kpi_cards?.length) setKpiCards(data.result.kpi_cards); setKpiResults(data.result.kpi_results || []); if (data.result.proactive_agents?.agent_findings) setAlerts(data.result.proactive_agents.agent_findings); setLoading(false); }
             } catch {}
           }
         }
       }
+      setLoading(false);
     } catch (e) { if (e.message !== 'Unauthorized') setError(e.message); setLoading(false); }
   }, []);
 
@@ -637,7 +638,7 @@ export default function APDashboard() {
     const cardContext = { card_id: card.id, title: card.title, description: card.description, value: card.value, formatted_value: card.formatted_value, comparison_value: card.comparison_value, comparison_label: card.comparison_label, detail_line_1: card.detail_line_1, detail_line_2: card.detail_line_2, sql_query: card.sql_query, chart_type: card.chart_type, chart_config: card.chart_config, data: card.chart_data || card.data, summary: card.summary };
     try {
       const res = await authFetch('/kpi-card-chat/chat-stream', { method: 'POST', headers: { 'Accept': 'text/event-stream' }, body: JSON.stringify({ query: question, card_context: cardContext, conversation_id: conversationId, catalog: 'finance_fusion_catalog', schema: 'finance_fusion_catalog', persona: 'CFO' }) });
-      const reader = res.body.getReader(); const decoder = new TextDecoder(); let buffer = '', fullAnswer = '', resultData = null, followups = [], intent = '';
+      const reader = res.body.getReader(); const decoder = new TextDecoder(); let buffer = '', fullAnswer = '', resultData = null, followups = [], intent = '', charts = [];
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || '';
@@ -645,19 +646,48 @@ export default function APDashboard() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.stage === 'analyzing') setStreamingText('Analyzing your question...');
-              if (data.stage === 'intent_classified') { intent = data.intent; setStreamingText(`Understanding intent: ${intent}...`); }
+              if (data.stage === 'analyzing') setStreamingText(data.message || 'Analyzing your question...');
+              if (data.stage === 'intent_classified') { intent = data.intent || ''; setStreamingText(data.message || `Understanding intent: ${intent}...`); }
+              if (data.stage === 'routing') setStreamingText(data.message || 'Routing query...');
+              if (data.stage === 'routing_done') setStreamingText(data.message || 'Route identified...');
+              if (data.stage === 'planning') setStreamingText(data.message || 'Planning analysis...');
+              if (data.stage === 'planning_done') setStreamingText(data.message || `Plan ready: ${data.query_count || ''} queries...`);
+              if (data.stage === 'synthesizing') setStreamingText(data.message || 'Synthesizing insights...');
+              if (data.stage === 'query_complete' && data.status === 'success') {
+                if (data.data && data.data.length > 0 && data.chart_config) {
+                  charts.push({ title: data.chart_config?.title || data.purpose || 'Query Result', chart_type: data.chart_type || 'vertical_bar_chart', chart_config: data.chart_config, data: data.data, sql_query: data.sql_query, query_id: data.query_id });
+                }
+                setStreamingText(`Analysis ${data.progress || ''}% complete...`);
+              }
               if (data.stage === 'answer_ready' && data.answer) { fullAnswer = data.answer; setStreamingText(data.answer); }
               if (data.stage === 'drill_down') setStreamingText(fullAnswer + '\n\nGenerating detailed breakdown...');
               if (data.stage === 'drill_down_ready') { resultData = data.data; if (data.message) fullAnswer += '\n\n' + data.message; setStreamingText(fullAnswer); }
-              if (data.stage === 'done' && data.result) { fullAnswer = data.result.answer || fullAnswer; resultData = data.result.data || resultData; followups = data.result.suggested_followups || []; if (data.result.conversation_id) setConversationId(data.result.conversation_id); }
+              if (data.stage === 'done' || data.stage === 'complete') {
+                if (data.conversation_id) setConversationId(data.conversation_id);
+                if (data.result) {
+                  if (data.result.diagnostic_type || data.result.narrative) {
+                    fullAnswer = '';
+                    if (data.result.headline) fullAnswer += `**${data.result.headline}**\n\n`;
+                    if (data.result.narrative) fullAnswer += data.result.narrative;
+                    if (data.result.assessment_text) fullAnswer += `\n\n**Assessment:** ${data.result.assessment_text}`;
+                    if (data.result.key_metrics && data.result.key_metrics.length > 0) { fullAnswer += '\n\n**Key Metrics:**\n'; fullAnswer += data.result.key_metrics.map(m => `- ${m.label}: ${m.value}`).join('\n'); }
+                    if (data.result.root_causes && data.result.root_causes.length > 0) { fullAnswer += '\n\n**Root Causes:**\n'; fullAnswer += data.result.root_causes.map(rc => `- **${rc.category}** (${rc.percentage}%): ${rc.description}`).join('\n'); }
+                    if (data.result.query_results && data.result.query_results.length > 0 && charts.length === 0) {
+                      charts = data.result.query_results.filter(qr => qr.status === 'success' && qr.data && qr.data.length > 0 && qr.chart_config).map(qr => ({ title: qr.chart_config?.title || qr.purpose || 'Result', chart_type: qr.chart_type || 'vertical_bar_chart', chart_config: qr.chart_config, data: qr.data, sql_query: qr.sql_query, query_id: qr.query_id }));
+                    }
+                    followups = data.result.followups || [];
+                  } else {
+                    fullAnswer = data.result.answer || fullAnswer; resultData = data.result.data || resultData; followups = data.result.suggested_followups || []; if (data.result.conversation_id) setConversationId(data.result.conversation_id);
+                  }
+                }
+              }
               if (data.stage === 'error') fullAnswer = 'Error: ' + (data.message || 'Unknown error');
             } catch {}
           }
         }
       }
       setStreamingText('');
-      setAgentMessages(prev => [...prev, { text: fullAnswer || 'No response', sender: 'ai', data: resultData, followups, intent, cardTitle: card.title }]);
+      setAgentMessages(prev => [...prev, { text: fullAnswer || 'No response', sender: 'ai', data: resultData, charts: charts.length > 0 ? charts : undefined, followups, intent, cardTitle: card.title }]);
     } catch (e) { if (e.message !== 'Unauthorized') { setStreamingText(''); setAgentMessages(prev => [...prev, { text: 'Error: ' + e.message, sender: 'ai' }]); } }
     finally { setIsChatLoading(false); }
   }, [conversationId]);
@@ -923,6 +953,9 @@ export default function APDashboard() {
   const cashFlowKpi = kpiResults.find(k => k.kpi?.title?.includes('Cash Outflow'));
   const agingKpi = kpiResults.find(k => k.kpi?.title?.includes('Aging'));
   const criticalAlerts = alerts.filter(a => a.structured_summary?.severity === 'CRITICAL');
+  const cashFlowChartCard = localCards.find(c => c.chart_data?.length > 0 && (c.id?.includes('total_ap') || c.chart_type === 'line_chart'));
+  const agingChartCard = localCards.find(c => c.chart_data?.length > 0 && (c.id?.includes('overdue') || c.id?.includes('aging')));
+  const getDisplayData = (card) => { if (!card?.chart_data) return []; const cfg = card.chart_config; if (cfg?.stack_by && card.chart_data.length > 20) { const x = cfg.x_axis_col_name, y = (cfg.y_axis_col_name || [])[0]; const agg = {}; card.chart_data.forEach(d => { const k = d[x] || ''; agg[k] = (agg[k] || 0) + (d[y] || 0); }); return Object.entries(agg).map(([k, v]) => ({ [x]: k, [y]: v })); } return card.chart_data.slice(0, 15); };
 
   useEffect(() => {
     if (view === 'dashboard' && cashFlowKpi?.data && canvasRef.current && !loading) {
@@ -1023,8 +1056,8 @@ export default function APDashboard() {
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">{localCards.map(card => <KPICard key={card.id} card={card} onClick={setModalCard} />)}</section>
               <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">{proactiveCards.map(card => <ProactiveCard key={card.id} card={card} />)}</section>
               <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"><div className="p-4 border-b border-slate-100"><h3 className="font-serif text-base font-medium text-slate-900">Monthly Cash Outflows</h3></div><div className="p-4"><div className="h-52 relative"><canvas ref={canvasRef} className="w-full h-full" /></div></div></div>
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"><div className="p-4 border-b border-slate-100"><h3 className="font-serif text-base font-medium text-slate-900">AP Aging Distribution</h3></div><div className="p-4">{agingData.length > 0 ? (<><div className="flex gap-0.5 mb-2">{agingData.map(a => <div key={a.label} className="flex-1 text-center"><div className="font-mono text-xs font-semibold text-slate-900">{a.amount}</div><div className="text-[9px] text-slate-500">{a.pct}</div></div>)}</div><div className="flex gap-0.5 h-36 items-end mb-2">{agingData.map(a => <div key={a.label} className={`flex-1 rounded-t ${a.color} transition-all hover:opacity-80`} style={{ height: `${a.h}%` }} />)}</div><div className="flex gap-0.5">{agingData.map(a => <div key={a.label} className="flex-1 text-center text-[8px] text-slate-500 truncate">{a.label}</div>)}</div></>) : <div className="h-36 flex items-center justify-center text-slate-400 text-sm">No data</div>}</div></div>
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"><div className="p-4 border-b border-slate-100"><h3 className="font-serif text-base font-medium text-slate-900">Monthly Cash Outflows</h3></div><div className="p-4"><div className="h-52 relative">{cashFlowKpi?.data ? <canvas ref={canvasRef} className="w-full h-full" /> : cashFlowChartCard ? <ChartCanvas chartConfig={cashFlowChartCard.chart_config} data={getDisplayData(cashFlowChartCard)} chartType={cashFlowChartCard.chart_type} title="" /> : <div className="h-full flex items-center justify-center text-slate-400 text-sm">No chart data</div>}</div></div></div>
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"><div className="p-4 border-b border-slate-100"><h3 className="font-serif text-base font-medium text-slate-900">AP Aging Distribution</h3></div><div className="p-4">{agingData.length > 0 ? (<><div className="flex gap-0.5 mb-2">{agingData.map(a => <div key={a.label} className="flex-1 text-center"><div className="font-mono text-xs font-semibold text-slate-900">{a.amount}</div><div className="text-[9px] text-slate-500">{a.pct}</div></div>)}</div><div className="flex gap-0.5 h-36 items-end mb-2">{agingData.map(a => <div key={a.label} className={`flex-1 rounded-t ${a.color} transition-all hover:opacity-80`} style={{ height: `${a.h}%` }} />)}</div><div className="flex gap-0.5">{agingData.map(a => <div key={a.label} className="flex-1 text-center text-[8px] text-slate-500 truncate">{a.label}</div>)}</div></>) : agingChartCard ? <div className="h-36"><ChartCanvas chartConfig={agingChartCard.chart_config} data={getDisplayData(agingChartCard)} chartType={agingChartCard.chart_type === 'stacked_bar_chart' ? 'vertical_bar_chart' : agingChartCard.chart_type} title="" /></div> : <div className="h-36 flex items-center justify-center text-slate-400 text-sm">No data</div>}</div></div>
               </section>
               <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"><div className="p-4 border-b border-slate-100"><h3 className="font-serif text-base font-medium text-slate-900">Proactive Alerts</h3><p className="text-[10px] text-slate-500">{alerts.length} findings</p></div><div className="p-3 flex flex-col gap-2 max-h-64 overflow-y-auto">{alerts.slice(0, 5).map((alert, i) => <div key={i} onClick={() => setAlertModal(alert)} className="cursor-pointer"><AlertCard alert={alert} /></div>)}</div></div>

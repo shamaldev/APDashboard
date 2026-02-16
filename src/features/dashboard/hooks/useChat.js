@@ -72,6 +72,8 @@ const useChat = (userName) => {
       let resultData = null
       let followups = []
       let intent = ''
+      let charts = []
+      let diagnosticResult = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -86,11 +88,33 @@ const useChat = (userName) => {
             try {
               const data = JSON.parse(line.slice(6))
 
-              if (data.stage === 'analyzing') setStreamingText('Analyzing your question...')
+              if (data.stage === 'analyzing') setStreamingText(data.message || 'Analyzing your question...')
               if (data.stage === 'intent_classified') {
-                intent = data.intent
-                setStreamingText(`Understanding intent: ${intent}...`)
+                intent = data.intent || ''
+                setStreamingText(data.message || `Understanding intent: ${intent}...`)
               }
+              if (data.stage === 'routing') setStreamingText(data.message || 'Routing query...')
+              if (data.stage === 'routing_done') setStreamingText(data.message || 'Route identified...')
+              if (data.stage === 'planning') setStreamingText(data.message || 'Planning analysis...')
+              if (data.stage === 'planning_done') setStreamingText(data.message || `Plan ready: ${data.query_count || ''} queries...`)
+              if (data.stage === 'synthesizing') setStreamingText(data.message || 'Synthesizing insights...')
+
+              // Handle streamed query results (diagnostic queries)
+              if (data.stage === 'query_complete' && data.status === 'success') {
+                if (data.data && data.data.length > 0 && data.chart_config) {
+                  charts.push({
+                    title: data.chart_config?.title || data.purpose || 'Query Result',
+                    chart_type: data.chart_type || 'vertical_bar_chart',
+                    chart_config: data.chart_config,
+                    data: data.data,
+                    sql_query: data.sql_query,
+                    query_id: data.query_id
+                  })
+                }
+                setStreamingText(`Analysis ${data.progress || ''}% complete...`)
+              }
+
+              // Existing stages (backward compatibility)
               if (data.stage === 'answer_ready' && data.answer) {
                 fullAnswer = data.answer
                 setStreamingText(data.answer)
@@ -103,12 +127,48 @@ const useChat = (userName) => {
                 if (data.message) fullAnswer += '\n\n' + data.message
                 setStreamingText(fullAnswer)
               }
-              if (data.stage === 'done' && data.result) {
-                fullAnswer = data.result.answer || fullAnswer
-                resultData = data.result.data || resultData
-                followups = data.result.suggested_followups || []
-                if (data.result.conversation_id) setConversationId(data.result.conversation_id)
+
+              // Handle done/complete
+              if (data.stage === 'done' || data.stage === 'complete') {
+                if (data.conversation_id) setConversationId(data.conversation_id)
+
+                if (data.result) {
+                  // Diagnostic response format
+                  if (data.result.diagnostic_type || data.result.narrative) {
+                    diagnosticResult = data.result
+
+                    // Extract narrative body without headline duplication
+                    let narrativeBody = data.result.narrative || ''
+                    if (data.result.headline && narrativeBody.startsWith(data.result.headline)) {
+                      narrativeBody = narrativeBody.slice(data.result.headline.length).replace(/^\n+/, '')
+                    }
+                    fullAnswer = narrativeBody || data.result.headline || ''
+
+                    // Build charts from query_results if not already captured from stream
+                    if (data.result.query_results && data.result.query_results.length > 0 && charts.length === 0) {
+                      charts = data.result.query_results
+                        .filter(qr => qr.status === 'success' && qr.data && qr.data.length > 0 && qr.chart_config)
+                        .map(qr => ({
+                          title: qr.chart_config?.title || qr.purpose || 'Result',
+                          chart_type: qr.chart_type || 'vertical_bar_chart',
+                          chart_config: qr.chart_config,
+                          data: qr.data,
+                          sql_query: qr.sql_query,
+                          query_id: qr.query_id
+                        }))
+                    }
+
+                    followups = data.result.followups || []
+                  } else {
+                    // Original response format
+                    fullAnswer = data.result.answer || fullAnswer
+                    resultData = data.result.data || resultData
+                    followups = data.result.suggested_followups || []
+                    if (data.result.conversation_id) setConversationId(data.result.conversation_id)
+                  }
+                }
               }
+
               if (data.stage === 'error') {
                 fullAnswer = 'Error: ' + (data.message || 'Unknown error')
               }
@@ -119,23 +179,23 @@ const useChat = (userName) => {
 
       setStreamingText('')
 
-      // Build charts array from KPI card data if available
-      let charts = []
-      if (resultData && resultData.length > 0 && card.chart_config) {
-        charts = [{
-          title: card.chart_config?.title || card.title || 'Query Results',
-          chart_type: card.chart_type || 'horizontal_bar_chart',
-          chart_config: card.chart_config,
-          data: resultData
-        }]
-      } else if (card.chart_data && card.chart_data.length > 0 && card.chart_config) {
-        // Fallback to card's original chart data if no drill-down data
-        charts = [{
-          title: card.chart_config?.title || card.title || 'Query Results',
-          chart_type: card.chart_type || 'horizontal_bar_chart',
-          chart_config: card.chart_config,
-          data: card.chart_data
-        }]
+      // Build charts from KPI card data only if no diagnostic charts were captured
+      if (charts.length === 0) {
+        if (resultData && resultData.length > 0 && card.chart_config) {
+          charts = [{
+            title: card.chart_config?.title || card.title || 'Query Results',
+            chart_type: card.chart_type || 'horizontal_bar_chart',
+            chart_config: card.chart_config,
+            data: resultData
+          }]
+        } else if (card.chart_data && card.chart_data.length > 0 && card.chart_config) {
+          charts = [{
+            title: card.chart_config?.title || card.title || 'Query Results',
+            chart_type: card.chart_type || 'horizontal_bar_chart',
+            chart_config: card.chart_config,
+            data: card.chart_data
+          }]
+        }
       }
 
       setAgentMessages(prev => [...prev, {
@@ -145,7 +205,8 @@ const useChat = (userName) => {
         charts: charts.length > 0 ? charts : undefined,
         followups,
         intent,
-        cardTitle: card.title
+        cardTitle: card.title,
+        diagnosticResult
       }])
     } catch (e) {
       if (e.message !== 'Unauthorized') {
@@ -455,7 +516,26 @@ const useChat = (userName) => {
             break
 
           case 'simple':
-            if (query.simple_result) {
+            // Check for diagnostic result first (rich structured rendering)
+            if (query.diagnostic_result) {
+              const diag = query.diagnostic_result
+
+              // Extract narrative body (remove headline from start if duplicated)
+              let narrativeBody = diag.narrative || ''
+              if (diag.headline && narrativeBody.startsWith(diag.headline)) {
+                narrativeBody = narrativeBody.slice(diag.headline.length).replace(/^\n+/, '')
+              }
+
+              // Pass structured diagnostic for rich rendering in ChatMessage
+              aiMessage.diagnosticResult = diag
+              aiMessage.text = narrativeBody || diag.headline || ''
+              aiMessage.followups = normalizeFollowups(diag.followups)
+
+              // Use query-level charts for diagnostics (multiple charts)
+              if (query.charts && query.charts.length > 0) {
+                aiMessage.charts = query.charts
+              }
+            } else if (query.simple_result) {
               const result = query.simple_result
               aiMessage.text = result.answer || ''
               aiMessage.sqlQuery = result.sql_query
@@ -470,6 +550,11 @@ const useChat = (userName) => {
                   data: result.data,
                   row_count: result.row_count
                 }]
+              }
+
+              // Also check query-level charts (may have more charts than simple_result)
+              if (query.charts && query.charts.length > 0 && (!aiMessage.charts || aiMessage.charts.length < query.charts.length)) {
+                aiMessage.charts = query.charts
               }
             }
             break
@@ -511,8 +596,20 @@ const useChat = (userName) => {
             break
 
           default:
-            // Fallback for unknown types
-            if (query.simple_result) {
+            // Fallback for unknown types - check diagnostic first
+            if (query.diagnostic_result) {
+              const diag = query.diagnostic_result
+              let narrativeBody = diag.narrative || ''
+              if (diag.headline && narrativeBody.startsWith(diag.headline)) {
+                narrativeBody = narrativeBody.slice(diag.headline.length).replace(/^\n+/, '')
+              }
+              aiMessage.diagnosticResult = diag
+              aiMessage.text = narrativeBody || diag.headline || ''
+              aiMessage.followups = normalizeFollowups(diag.followups)
+              if (query.charts && query.charts.length > 0) {
+                aiMessage.charts = query.charts
+              }
+            } else if (query.simple_result) {
               aiMessage.text = query.simple_result.answer || ''
               aiMessage.followups = normalizeFollowups(query.simple_result.suggested_followups)
             } else if (query.greeting_result) {

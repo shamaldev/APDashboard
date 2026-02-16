@@ -5,7 +5,7 @@
 
 const env = {
   // API Configuration
-  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://bcad931bd7d0.ngrok-free.app/api/v1',
+  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'https://249b-202-131-131-66.ngrok-free.app/api/v1',
 
   // App Configuration
   APP_NAME: import.meta.env.VITE_APP_NAME || 'AP Dashboard',

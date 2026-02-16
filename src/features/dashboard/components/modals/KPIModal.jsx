@@ -1,111 +1,29 @@
 /**
  * KPIModal Component
- * Detail modal for KPI card drill-down
+ * Detail modal for KPI card drill-down with chart switching via AI
  */
 
-import { useState, useRef, useEffect } from 'react'
-import { X, Send } from 'lucide-react'
-import { CHART_COLORS } from '../../utils/constants'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Send, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { cleanComparisonLabel } from '../../utils/helpers'
+import { ChartCanvas } from '../charts'
+import AIChartQueryModal from './AIChartQueryModal'
 
 const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
   const [question, setQuestion] = useState('')
-  const canvasRef = useRef(null)
+  const [aiModalChart, setAiModalChart] = useState(null)
+  const [chartData, setChartData] = useState(null)
+  const [chartType, setChartType] = useState(null)
+  const [chartConfig, setChartConfig] = useState(null)
 
+  // Sync chart data from card when it changes
   useEffect(() => {
-    if (isOpen && card && canvasRef.current) {
-      renderChart()
+    if (card) {
+      setChartData(card.chart_data || [])
+      setChartType(card.chart_type_ai || card.chart_type || 'line_chart')
+      setChartConfig(card.chart_config || {})
     }
-  }, [isOpen, card])
-
-  const renderChart = () => {
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    canvas.width = canvas.parentElement.offsetWidth
-    canvas.height = canvas.parentElement.offsetHeight
-
-    const chartData = card.chart_data || []
-    const config = card.chart_config || {}
-    const w = canvas.width
-    const h = canvas.height
-    const pad = { t: 30, r: 20, b: 50, l: 70 }
-
-    ctx.clearRect(0, 0, w, h)
-
-    if (chartData.length === 0) {
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '14px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('No chart data available', w / 2, h / 2)
-      return
-    }
-
-    const xCol = config.x_axis_col_name || Object.keys(chartData[0])[0]
-    const yCol = (config.y_axis_col_name || [])[0] || Object.keys(chartData[0]).find(k => typeof chartData[0][k] === 'number')
-    const values = chartData.map(d => d[yCol] || 0)
-    const labels = chartData.map(d => d[xCol] || '')
-    const max = Math.max(...values) * 1.1 || 1
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(0,0,0,0.05)'
-    for (let i = 0; i <= 4; i++) {
-      const y = pad.t + (i / 4) * (h - pad.t - pad.b)
-      ctx.beginPath()
-      ctx.moveTo(pad.l, y)
-      ctx.lineTo(w - pad.r, y)
-      ctx.stroke()
-    }
-
-    // Line
-    ctx.strokeStyle = CHART_COLORS[0]
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    values.forEach((v, i) => {
-      const x = pad.l + (i / (values.length - 1 || 1)) * (w - pad.l - pad.r)
-      const y = pad.t + (h - pad.t - pad.b) - (v / max) * (h - pad.t - pad.b)
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-
-    // Fill area
-    ctx.lineTo(w - pad.r, h - pad.b)
-    ctx.lineTo(pad.l, h - pad.b)
-    ctx.closePath()
-    const grad = ctx.createLinearGradient(0, 0, 0, h)
-    grad.addColorStop(0, 'rgba(180,134,46,0.2)')
-    grad.addColorStop(1, 'rgba(180,134,46,0)')
-    ctx.fillStyle = grad
-    ctx.fill()
-
-    // Points
-    ctx.fillStyle = CHART_COLORS[0]
-    values.forEach((v, i) => {
-      const x = pad.l + (i / (values.length - 1 || 1)) * (w - pad.l - pad.r)
-      const y = pad.t + (h - pad.t - pad.b) - (v / max) * (h - pad.t - pad.b)
-      ctx.beginPath()
-      ctx.arc(x, y, 4, 0, Math.PI * 2)
-      ctx.fill()
-    })
-
-    // X-axis labels
-    ctx.fillStyle = '#64748b'
-    ctx.font = '9px sans-serif'
-    ctx.textAlign = 'center'
-    labels.forEach((l, i) => {
-      if (i % Math.ceil(labels.length / 6) === 0 || labels.length <= 6) {
-        const x = pad.l + (i / (labels.length - 1 || 1)) * (w - pad.l - pad.r)
-        ctx.fillText(typeof l === 'string' ? l.substring(0, 10) : l, x, h - pad.b + 15)
-      }
-    })
-
-    // Y-axis labels
-    ctx.textAlign = 'right'
-    for (let i = 0; i <= 4; i++) {
-      const v = max - (i / 4) * max
-      const label = v >= 1e9 ? (v / 1e9).toFixed(1) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0)
-      ctx.fillText(label, pad.l - 8, pad.t + (i / 4) * (h - pad.t - pad.b) + 4)
-    }
-  }
+  }, [card])
 
   const handleSend = () => {
     if (question.trim()) {
@@ -113,6 +31,34 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
       setQuestion('')
     }
   }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  // Open AI chart query modal for chart switching
+  const handleAIClick = useCallback(() => {
+    if (!card) return
+    setAiModalChart({
+      chart_config: chartConfig,
+      chart_type: chartType,
+      data: chartData,
+      title: card.title,
+      description: card.description,
+      chart_sql: card.chart_sql
+    })
+  }, [card, chartConfig, chartType, chartData])
+
+  // Handle chart update from AIChartQueryModal
+  const handleChartUpdate = useCallback((updatedChart) => {
+    if (updatedChart.data) setChartData(updatedChart.data)
+    if (updatedChart.chart_type) setChartType(updatedChart.chart_type)
+    if (updatedChart.chart_config) setChartConfig(updatedChart.chart_config)
+    setAiModalChart(null)
+  }, [])
 
   const suggestedQuestions = [
     `What's driving ${card?.title}?`,
@@ -123,109 +69,200 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
   if (!isOpen || !card) return null
 
   const summary = card.summary
+  const trendDirection = card.status
+  const comparisonNum = parseFloat(card.comparison_value) || 0
+  const comparisonPct = Math.abs(comparisonNum * 100).toFixed(2)
+
+  // Determine trend styling
+  const isPositive = trendDirection === 'up'
+  const isNegative = trendDirection === 'down'
+  const trendColor = isPositive ? 'text-emerald-600' : isNegative ? 'text-red-600' : 'text-slate-500'
+  const trendBg = isPositive ? 'bg-emerald-50' : isNegative ? 'bg-red-50' : 'bg-slate-50'
+
+  // For AP metrics, "up" is bad (more outstanding), "down" is good
+  const isAPMetric = card.id?.includes('outstanding') || card.id?.includes('overdue')
+  const effectiveTrendColor = isAPMetric
+    ? (isPositive ? 'text-red-600' : isNegative ? 'text-emerald-600' : 'text-slate-500')
+    : trendColor
+  const effectiveTrendBg = isAPMetric
+    ? (isPositive ? 'bg-red-50' : isNegative ? 'bg-emerald-50' : 'bg-slate-50')
+    : trendBg
+
+  // Alert level color
+  const alertColors = {
+    success: { border: 'border-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+    warning: { border: 'border-amber-500', bg: 'bg-amber-50', text: 'text-amber-700' },
+    critical: { border: 'border-red-500', bg: 'bg-red-50', text: 'text-red-700' }
+  }
+  const alertStyle = alertColors[summary?.alert_level] || alertColors.warning
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="p-4 border-b border-slate-100 flex justify-between items-start bg-slate-50">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-slate-900">
-              {summary?.title || card.title}
-            </h2>
-            <p className="text-xs text-slate-500">{card.description}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-900">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-5 overflow-y-auto flex-1 grid md:grid-cols-[2fr_1fr] gap-5">
-          <div className="flex flex-col gap-4">
-            {/* Values */}
-            <div className="flex gap-4 items-end flex-wrap">
-              <div>
-                <div className="text-[9px] text-slate-500 uppercase">Current</div>
-                <div className="font-serif text-3xl font-semibold text-slate-900">{card.formatted_value}</div>
-              </div>
-              <div>
-                <div className={`font-semibold text-sm ${card.status === 'up' ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {card.formatted_comparison}
-                </div>
-                <div className="text-[10px] text-slate-500">{cleanComparisonLabel(card.comparison_label)}</div>
-              </div>
+    <>
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white w-full max-w-[900px] max-h-[88vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/60"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-start bg-gradient-to-r from-slate-50 to-white">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                {summary?.title || `${card.title} Analysis`}
+              </h2>
+              <p className="text-sm text-slate-500 mt-0.5">{card.description}</p>
             </div>
-
-            {/* Chart */}
-            <div className="h-56 bg-slate-50 border border-slate-100 rounded-lg p-3 relative">
-              <canvas ref={canvasRef} className="w-full h-full" />
-            </div>
-
-            {/* Analysis */}
-            {summary?.drivers && (
-              <div className="bg-slate-100 p-3 rounded-lg border-l-4 border-amber-600">
-                <div className="text-[9px] font-semibold uppercase text-slate-500 mb-2">Analysis</div>
-                {summary.drivers.map((d, i) => (
-                  <div key={i} className="flex gap-2 mb-1.5 text-xs text-slate-700">
-                    <span className="shrink-0">{d.icon}</span>
-                    <span><strong>{d.title}:</strong> {d.description}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar */}
-          <div className="flex flex-col gap-4">
-            {summary?.current_state?.secondary_metrics && (
-              <div>
-                <div className="text-[9px] font-semibold uppercase text-slate-500 mb-2">Breakdown</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {summary.current_state.secondary_metrics.map((m, i) => (
-                    <div key={i} className="bg-slate-50 p-2 rounded text-center">
-                      <div className="text-[9px] text-slate-500 uppercase truncate">{m.label}</div>
-                      <div className="font-mono text-sm font-semibold text-slate-900 truncate">{m.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="text-[9px] font-semibold uppercase text-slate-500 mb-2">Quick Questions</div>
-              <div className="flex flex-col gap-1.5">
-                {suggestedQuestions.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => onAskQuestion(q, card)}
-                    className="text-left text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-2 rounded-lg transition-colors"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer input */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50">
-          <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-lg px-3 py-2">
-            <input
-              value={question}
-              onChange={e => setQuestion(e.target.value)}
-              placeholder="Ask a follow-up question..."
-              className="flex-1 bg-transparent outline-none text-sm"
-              onKeyPress={e => e.key === 'Enter' && handleSend()}
-            />
-            <button onClick={handleSend} className="bg-amber-600 text-white rounded p-1.5 hover:bg-amber-700">
-              <Send size={12} />
+            <button
+              onClick={onClose}
+              className="ml-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <X size={20} />
             </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-6 py-5">
+              <div className="grid md:grid-cols-[1.6fr_1fr] gap-6">
+                {/* Left Column */}
+                <div className="flex flex-col gap-5">
+                  {/* Primary Metric */}
+                  <div className="flex items-end gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Current</div>
+                      <div className="text-4xl font-bold text-slate-900 tracking-tight leading-none">
+                        {card.formatted_value}
+                      </div>
+                    </div>
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${effectiveTrendBg}`}>
+                      {isPositive ? (
+                        <TrendingUp size={14} className={effectiveTrendColor} />
+                      ) : isNegative ? (
+                        <TrendingDown size={14} className={effectiveTrendColor} />
+                      ) : (
+                        <Minus size={14} className={effectiveTrendColor} />
+                      )}
+                      <span className={`text-sm font-semibold ${effectiveTrendColor}`}>
+                        {comparisonNum > 0 ? '+' : ''}{comparisonPct}%
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {cleanComparisonLabel(card.comparison_label)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Chart with AI button */}
+                  <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-4 relative min-h-[260px]">
+                    {chartData && chartData.length > 0 ? (
+                      <ChartCanvas
+                        chartConfig={chartConfig}
+                        data={chartData}
+                        chartType={chartType}
+                        title=""
+                        showAIButton={true}
+                        onAIClick={handleAIClick}
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-sm text-slate-400">
+                        No chart data available
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Analysis Drivers */}
+                  {summary?.drivers && summary.drivers.length > 0 && (
+                    <div className={`rounded-xl border-l-4 ${alertStyle.border} bg-white border border-slate-100 shadow-sm overflow-hidden`}>
+                      <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Analysis</span>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        {summary.drivers.map((d, i) => (
+                          <div key={i} className="flex gap-3 items-start">
+                            <span className="text-base shrink-0 mt-0.5">{d.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-semibold text-slate-800">{d.title}:</span>
+                              {' '}
+                              <span className="text-sm text-slate-600 leading-relaxed">{d.description}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Column - Sidebar */}
+                <div className="flex flex-col gap-5">
+                  {/* Breakdown Metrics */}
+                  {summary?.current_state?.secondary_metrics && summary.current_state.secondary_metrics.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Breakdown</div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {summary.current_state.secondary_metrics.map((m, i) => (
+                          <div
+                            key={i}
+                            className="bg-white border border-slate-200 rounded-xl p-3 text-center shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1 truncate">{m.label}</div>
+                            <div className="text-sm font-bold text-slate-900 truncate" title={m.value}>{m.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Questions */}
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Quick Questions</div>
+                    <div className="flex flex-col gap-2">
+                      {suggestedQuestions.map((q, i) => (
+                        <button
+                          key={i}
+                          onClick={() => onAskQuestion(q, card)}
+                          className="text-left text-sm text-amber-700 bg-amber-50 hover:bg-amber-100 px-4 py-2.5 rounded-xl transition-all hover:shadow-sm border border-amber-100 hover:border-amber-200"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Input */}
+          <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80">
+            <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+              <input
+                value={question}
+                onChange={e => setQuestion(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                className="flex-1 bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400"
+                onKeyDown={handleKeyDown}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!question.trim()}
+                className="bg-amber-600 text-white rounded-lg p-2 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 transition-colors shrink-0"
+              >
+                <Send size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* AI Chart Query Modal */}
+      <AIChartQueryModal
+        isOpen={!!aiModalChart}
+        onClose={() => setAiModalChart(null)}
+        chartData={aiModalChart}
+        onChartUpdate={handleChartUpdate}
+      />
+    </>
   )
 }
 

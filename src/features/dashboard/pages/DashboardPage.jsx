@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 // Utils
@@ -31,6 +32,7 @@ import {
   // Modals
   KPIModal,
   AlertModal,
+  EmailModal,
   // Chat
   ChatMessage,
   ChatSidebar,
@@ -38,6 +40,8 @@ import {
 } from '../components'
 
 export default function DashboardPage() {
+  const location = useLocation()
+
   // View state
   const [view, setView] = useState('dashboard')
   const [isAuthenticated, setIsAuthenticated] = useState(true)
@@ -46,6 +50,7 @@ export default function DashboardPage() {
   // Modal state
   const [modalCard, setModalCard] = useState(null)
   const [alertModal, setAlertModal] = useState(null)
+  const [emailAlert, setEmailAlert] = useState(null)
 
   // Dashboard query
   const [dashboardQuery, setDashboardQuery] = useState('')
@@ -135,6 +140,54 @@ export default function DashboardPage() {
     prevConversationIdRef.current = conversationId
   }, [conversationId, refreshHistory])
 
+  // Handle chart query from navigation state
+  useEffect(() => {
+    if (location.state?.chartQuery) {
+      const { question, answer, chartData, suggestedActions } = location.state.chartQuery
+
+      // Switch to AI assistant view
+      setView('ai-agent')
+      setActiveCard(null)
+
+      // Add the question and answer to the chat
+      setTimeout(() => {
+        // Create a simulated user message and AI response
+        const userMessage = {
+          sender: 'user',
+          text: question
+        }
+
+        const aiMessage = {
+          sender: 'assistant',
+          text: answer,
+          queryType: 'simple',
+          followups: suggestedActions || []
+        }
+
+        // If there's chart data, include it in the AI message
+        if (chartData) {
+          aiMessage.charts = [{
+            ...chartData,
+            chart_config: chartData.chart_config || chartData.kpi?.chart_config,
+            chart_type: chartData.chart_type || chartData.kpi?.chart_type,
+            data: chartData.data || []
+          }]
+        }
+
+        // Manually add messages (this is a workaround; ideally integrate with useChat)
+        if (agentMessages.length === 0 || agentMessages[agentMessages.length - 1].text !== answer) {
+          // You may need to expose a method from useChat to add messages programmatically
+          console.log('Chart Query:', { userMessage, aiMessage })
+          // For now, trigger a general chat with the question
+          handleGeneralChat(question)
+        }
+      }, 100)
+
+      // Clear the navigation state
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state])
+
   // Handlers
   const handleModalQuestion = (question, card) => {
     setModalCard(null)
@@ -150,6 +203,16 @@ export default function DashboardPage() {
     const conversationData = await fetchConversationMessages(convId)
     if (conversationData) {
       loadConversation(convId, conversationData)
+    }
+  }
+
+  // Handle deleting a conversation
+  const handleDeleteConversation = async (convId) => {
+    if (!window.confirm('Delete this conversation? This cannot be undone.')) return
+
+    const success = await deleteConversation(convId)
+    if (success && convId === conversationId) {
+      handleNewChat()
     }
   }
 
@@ -219,7 +282,7 @@ export default function DashboardPage() {
 
     return {
       title: alert.structured_summary?.alert_title || alert.tool_name?.replace(/_/g, ' ') || 'Alert',
-      subtitle: alert.structured_summary?.key_findings?.split('\n')[0]?.replace(/^-\s*/, '') || `${alert.record_count || 0} records found`,
+      subtitle: (typeof alert.structured_summary?.key_findings === 'string' ? alert.structured_summary.key_findings.split('\n')[0]?.replace(/^-\s*/, '') : Array.isArray(alert.structured_summary?.key_findings) ? alert.structured_summary.key_findings[0] : null) || `${alert.record_count || 0} records found`,
       value: displayValue,
       severity,
       type,
@@ -361,7 +424,7 @@ export default function DashboardPage() {
                 onLoadMore={loadMoreHistory}
                 onSelectConversation={handleSelectConversation}
                 onArchiveConversation={archiveConversation}
-                onDeleteConversation={deleteConversation}
+                onDeleteConversation={handleDeleteConversation}
                 activeConversationId={conversationId}
               />
 
@@ -432,6 +495,12 @@ export default function DashboardPage() {
         isOpen={!!alertModal}
         onClose={() => setAlertModal(null)}
         alert={alertModal}
+        onSendEmail={(alert) => setEmailAlert(alert)}
+      />
+      <EmailModal
+        isOpen={!!emailAlert}
+        onClose={() => setEmailAlert(null)}
+        alert={emailAlert}
       />
     </div>
   )

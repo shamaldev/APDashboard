@@ -141,10 +141,18 @@ export const postStream = async (url, data, onEvent, signal = null) => {
   await readStream(response, onEvent, signal)
 }
 
+/**
+ * Send email via backend
+ * @param {object} emailData - { to_email, subject, body, from_email?, attachments? }
+ * @returns {Promise<object>}
+ */
+export const sendEmail = (emailData) => post('/dashboards/send-email/', emailData)
+
 export default {
   authFetch,
   readStream,
   post,
   get,
   postStream,
+  sendEmail,
 }

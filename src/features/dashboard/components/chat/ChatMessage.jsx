@@ -5,8 +5,9 @@
  */
 
 import { useState } from 'react'
-import { AlertTriangle, Database, ChevronDown, ChevronUp, Volume2, VolumeX, Pause } from 'lucide-react'
+import { AlertTriangle, Database, ChevronDown, ChevronUp, Volume2, VolumeX, Pause, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
 import { ChartCanvas } from '../charts'
+import AIChartQueryModal from '../modals/AIChartQueryModal'
 
 const ChatMessage = ({
   message,
@@ -22,6 +23,8 @@ const ChatMessage = ({
 }) => {
   const isUser = message.sender === 'user'
   const [showSql, setShowSql] = useState(false)
+  const [aiModalChart, setAiModalChart] = useState(null)
+  const [charts, setCharts] = useState(message.charts || [])
 
   // Check if this message is currently being spoken
   const isThisMessageSpeaking = currentSpeakingId === messageIndex && isSpeaking
@@ -31,6 +34,23 @@ const ChatMessage = ({
       onKPICardChat(followUp, activeCard)
     } else {
       onGeneralChat(followUp)
+    }
+  }
+
+  const handleAIClick = (chart) => {
+    setAiModalChart(chart)
+  }
+
+  const handleChartUpdate = (updatedChart) => {
+    // Update the chart in the local state
+    const updatedCharts = charts.map(c =>
+      c === aiModalChart ? updatedChart : c
+    )
+    setCharts(updatedCharts)
+
+    // Also update in message if possible (for re-renders)
+    if (message.charts) {
+      message.charts = updatedCharts
     }
   }
 
@@ -81,8 +101,93 @@ const ChatMessage = ({
           </div>
         )}
 
-        {/* Message text with formatting */}
-        <div className="whitespace-pre-wrap">{formatText(message.text)}</div>
+        {/* Diagnostic result - structured professional card */}
+        {!isUser && message.diagnosticResult ? (() => {
+          const diag = message.diagnosticResult
+          const assessmentStyles = {
+            critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', icon: <AlertCircle size={14} />, label: 'Critical' },
+            warning: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: <AlertTriangle size={14} />, label: 'Warning' },
+            ok: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: <CheckCircle size={14} />, label: 'Healthy' }
+          }
+          const style = assessmentStyles[diag.assessment] || assessmentStyles.warning
+          return (
+            <div className="space-y-3">
+              {/* Headline */}
+              <div className="text-[13px] font-bold text-slate-900 leading-snug">
+                {diag.headline}
+              </div>
+
+              {/* Assessment badge */}
+              <div className={`flex items-start gap-2 p-2.5 rounded-lg border ${style.bg} ${style.border}`}>
+                <span className={`mt-0.5 ${style.text}`}>{style.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <span className={`text-[10px] font-bold uppercase ${style.text}`}>{style.label}</span>
+                  <div className="text-[11px] text-slate-700 mt-0.5 leading-relaxed">{diag.assessment_text}</div>
+                </div>
+              </div>
+
+              {/* Key Metrics */}
+              {diag.key_metrics && diag.key_metrics.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {diag.key_metrics.map((m, i) => (
+                    <div key={i} className="bg-white rounded-lg p-2 border border-slate-200 text-center">
+                      <div className="text-[9px] text-slate-500 uppercase font-medium">{m.label}</div>
+                      <div className="text-[13px] font-bold text-slate-900 mt-0.5">{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Narrative body */}
+              <div className="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {message.text}
+              </div>
+
+              {/* Root Causes */}
+              {diag.root_causes && diag.root_causes.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-semibold uppercase text-slate-500 mb-1.5">Root Causes</div>
+                  <div className="space-y-1.5">
+                    {diag.root_causes.map((rc, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-slate-200">
+                        <div className="shrink-0">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${
+                            rc.classification === 'Strategic' ? 'bg-blue-500' : 'bg-amber-500'
+                          }`}>
+                            {rc.percentage}%
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-semibold text-slate-800">{rc.category}</div>
+                          <div className="text-[10px] text-slate-500">{rc.description}</div>
+                          {rc.amount && <div className="text-[10px] font-medium text-slate-600 mt-0.5">{rc.amount}</div>}
+                        </div>
+                        <TrendingUp size={14} className={rc.classification === 'Strategic' ? 'text-blue-400' : 'text-amber-400'} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })() : (
+          <>
+            {/* Message text — split first paragraph as summary for AI simple results */}
+            {!isUser && message.text && message.text.includes('\n\n') ? (() => {
+              const firstBreak = message.text.indexOf('\n\n')
+              const summary = message.text.slice(0, firstBreak)
+              const rest = message.text.slice(firstBreak + 2)
+              return (
+                <div className="space-y-2">
+                  <div className="text-[12.5px] font-semibold text-slate-900 leading-snug">{formatText(summary)}</div>
+                  {rest && <div className="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap">{formatText(rest)}</div>}
+                </div>
+              )
+            })() : (
+              <div className="whitespace-pre-wrap">{formatText(message.text)}</div>
+            )}
+          </>
+        )}
 
         {/* Read aloud button for AI messages */}
         {!isUser && message.text && onSpeak && (
@@ -190,28 +295,25 @@ const ChatMessage = ({
         )}
 
         {/* Charts */}
-        {message.charts && message.charts.length > 0 && (
+        {charts && charts.length > 0 && (
           <div className="mt-3 pt-3 border-t border-slate-200">
             <div className="text-[10px] font-semibold uppercase text-slate-500 mb-2">
-              {message.queryType === 'complex_why' ? `Analysis (${message.charts.length} charts)` : 'Visualization'}
+              {message.queryType === 'complex_why' ? `Analysis (${charts.length} charts)` : 'Visualization'}
             </div>
-            <div className={`grid gap-3 ${message.charts.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-              {message.charts.map((chart, idx) => (
-                <div key={idx} className="bg-white rounded-lg p-2 border border-slate-200">
-                  <div className="text-[9px] font-medium text-slate-700 mb-1 truncate">
+            <div className={`grid gap-3 ${charts.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {charts.map((chart, idx) => (
+                <div key={idx} className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm">
+                  <div className="text-[11px] font-semibold text-slate-800 mb-2 leading-tight">
                     {chart.chart_config?.title || chart.title}
                   </div>
-                  {chart.purpose && (
-                    <div className="text-[8px] text-slate-400 mb-2 capitalize">
-                      {chart.purpose.replace(/_/g, ' ')}
-                    </div>
-                  )}
                   {chart.data && chart.data.length > 0 ? (
                     <ChartCanvas
                       chartConfig={chart.chart_config}
                       data={chart.data}
                       chartType={chart.chart_type}
                       title=""
+                      showAIButton={true}
+                      onAIClick={() => handleAIClick(chart)}
                     />
                   ) : (
                     <div className="h-20 flex items-center justify-center text-[10px] text-slate-400">
@@ -219,7 +321,7 @@ const ChatMessage = ({
                     </div>
                   )}
                   {chart.row_count !== undefined && (
-                    <div className="text-[8px] text-slate-400 mt-1 text-right">
+                    <div className="text-[9px] text-slate-400 mt-1 text-right">
                       {chart.row_count} rows
                     </div>
                   )}
@@ -228,6 +330,14 @@ const ChatMessage = ({
             </div>
           </div>
         )}
+
+        {/* AI Chart Query Modal */}
+        <AIChartQueryModal
+          isOpen={!!aiModalChart}
+          onClose={() => setAiModalChart(null)}
+          chartData={aiModalChart}
+          onChartUpdate={handleChartUpdate}
+        />
 
         {/* Strategic Recommendations (for complex_why) */}
         {message.strategicRecommendations && message.strategicRecommendations.length > 0 && (

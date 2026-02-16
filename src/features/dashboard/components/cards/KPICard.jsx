@@ -14,6 +14,8 @@ const KPICard = ({ card, onClick }) => {
   const comparison = parseFloat(card.comparison_value) || 0
   const isUp = card.status === 'up' || comparison > 0
   const isDown = card.status === 'down' || comparison < 0
+  const comparisonPct = Math.abs(comparison * 100).toFixed(1)
+  const comparisonDisplay = `${isUp ? '\u2191' : isDown ? '\u2193' : ''} ${isUp ? '+' : ''}${comparisonPct}%`
 
   return (
     <div
@@ -43,7 +45,7 @@ const KPICard = ({ card, onClick }) => {
       {/* Comparison badge */}
       <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded ${colors.badge}`}>
         {isUp ? <TrendingUp size={10} /> : isDown ? <TrendingDown size={10} /> : <Minus size={10} />}
-        {card.formatted_comparison}
+        {comparisonDisplay}
       </span>
 
       {/* Comparison label */}

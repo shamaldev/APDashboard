@@ -3,7 +3,7 @@
  * Detail modal for alert drill-down with data table
  */
 
-import { X, Table } from 'lucide-react'
+import { X, Table, Mail } from 'lucide-react'
 
 const formatCellValue = (value, key) => {
   if (value === null || value === undefined) return '—'
@@ -23,7 +23,7 @@ const formatColumnHeader = (key) => {
   return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
 
-const AlertModal = ({ isOpen, onClose, alert }) => {
+const AlertModal = ({ isOpen, onClose, alert, onSendEmail }) => {
   if (!isOpen || !alert) return null
 
   const s = alert.structured_summary || {}
@@ -47,9 +47,21 @@ const AlertModal = ({ isOpen, onClose, alert }) => {
               {s.alert_title}
             </h2>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-900">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onSendEmail && (
+              <button
+                onClick={() => onSendEmail(alert)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg transition-colors"
+                title="Send alert via email"
+              >
+                <Mail size={14} />
+                Send Email
+              </button>
+            )}
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-900">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
