@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 // Utils
@@ -40,8 +39,6 @@ import {
 } from '../components'
 
 export default function DashboardPage() {
-  const location = useLocation()
-
   // View state
   const [view, setView] = useState('dashboard')
   const [isAuthenticated, setIsAuthenticated] = useState(true)
@@ -75,7 +72,8 @@ export default function DashboardPage() {
     handleGeneralChat,
     handleNewChat,
     loadConversation,
-    clearContext
+    clearContext,
+    addChartQueryResult
   } = useChat(userName)
 
   // Chat history
@@ -130,70 +128,28 @@ export default function DashboardPage() {
     }
   }, [agentMessages, streamingText])
 
-  // Refresh history when a new conversation is created (conversationId changes from null to a value)
-  const prevConversationIdRef = useRef(null)
+  // Refresh sidebar after every completed chat interaction (loading true→false)
+  const prevChatLoadingRef = useRef(false)
   useEffect(() => {
-    // Only refresh when conversationId changes from null to a new value (new conversation created)
-    if (conversationId && prevConversationIdRef.current === null) {
+    if (prevChatLoadingRef.current && !isChatLoading) {
       refreshHistory()
     }
-    prevConversationIdRef.current = conversationId
-  }, [conversationId, refreshHistory])
+    prevChatLoadingRef.current = isChatLoading
+  }, [isChatLoading, refreshHistory])
 
-  // Handle chart query from navigation state
-  useEffect(() => {
-    if (location.state?.chartQuery) {
-      const { question, answer, chartData, suggestedActions } = location.state.chartQuery
-
-      // Switch to AI assistant view
-      setView('ai-agent')
-      setActiveCard(null)
-
-      // Add the question and answer to the chat
-      setTimeout(() => {
-        // Create a simulated user message and AI response
-        const userMessage = {
-          sender: 'user',
-          text: question
-        }
-
-        const aiMessage = {
-          sender: 'assistant',
-          text: answer,
-          queryType: 'simple',
-          followups: suggestedActions || []
-        }
-
-        // If there's chart data, include it in the AI message
-        if (chartData) {
-          aiMessage.charts = [{
-            ...chartData,
-            chart_config: chartData.chart_config || chartData.kpi?.chart_config,
-            chart_type: chartData.chart_type || chartData.kpi?.chart_type,
-            data: chartData.data || []
-          }]
-        }
-
-        // Manually add messages (this is a workaround; ideally integrate with useChat)
-        if (agentMessages.length === 0 || agentMessages[agentMessages.length - 1].text !== answer) {
-          // You may need to expose a method from useChat to add messages programmatically
-          console.log('Chart Query:', { userMessage, aiMessage })
-          // For now, trigger a general chat with the question
-          handleGeneralChat(question)
-        }
-      }, 100)
-
-      // Clear the navigation state
-      window.history.replaceState({}, document.title)
-    }
-  }, [location.state])
+  // Handle simple answer from chart query (no extra API call)
+  const handleChartSimpleAnswer = (result) => {
+    setModalCard(null)
+    setView('ai-agent')
+    addChartQueryResult(result)
+    refreshHistory()
+  }
 
   // Handlers
   const handleModalQuestion = (question, card) => {
     setModalCard(null)
     setView('ai-agent')
-    setActiveCard(card)
-    setTimeout(() => handleKPICardChat(question, card), 100)
+    handleKPICardChat(question, card, true)
   }
 
   // Handle selecting a conversation from history
@@ -346,7 +302,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex w-full min-h-screen bg-slate-50">
+    <div className="flex w-full min-h-screen" style={{ backgroundColor: '#F4F9FA' }}>
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="max-w-7xl mx-auto p-4 w-full">
           {/* Header */}
@@ -445,6 +401,7 @@ export default function DashboardPage() {
                       isSpeaking={isSpeaking}
                       isPaused={isPaused}
                       currentSpeakingId={currentSpeakingId}
+                      onSimpleAnswer={handleChartSimpleAnswer}
                     />
                   ))}
 
@@ -453,7 +410,7 @@ export default function DashboardPage() {
                     <div className="flex flex-col items-start max-w-[85%]">
                       <div className="px-4 py-3 rounded-2xl text-sm bg-slate-100 text-slate-900 rounded-bl-sm whitespace-pre-wrap">
                         {streamingText}
-                        <span className="inline-block w-1.5 h-4 bg-amber-600 ml-1 animate-pulse" />
+                        <span className="inline-block w-1.5 h-4 ml-1 animate-pulse" style={{ backgroundColor: '#2F5597' }} />
                       </div>
                     </div>
                   )}
@@ -490,6 +447,7 @@ export default function DashboardPage() {
         onClose={() => setModalCard(null)}
         card={modalCard}
         onAskQuestion={handleModalQuestion}
+        onSimpleAnswer={handleChartSimpleAnswer}
       />
       <AlertModal
         isOpen={!!alertModal}

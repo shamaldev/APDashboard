@@ -1,9 +1,18 @@
 /**
  * DashboardHeader Component
- * Top header with title, view toggle, and actions
+ * CrescentOne branded top header — logo, live indicator, view toggle, actions
  */
 
 import { RefreshCw, LogOut } from 'lucide-react'
+
+/* ─── Brand tokens ─────────────────────────────────────────────── */
+const CO = {
+  primary:    '#1B5272',
+  secondary:  '#7DAAAD',
+  activeBg:   '#1B5272',
+  toggleBg:   '#E4F0F3',
+  border:     '#D0E8EC',
+}
 
 const DashboardHeader = ({
   view,
@@ -12,62 +21,114 @@ const DashboardHeader = ({
   onLogout,
   criticalAlertsCount,
   date,
-  time
+  time,
 }) => {
   return (
-    <header className="flex flex-wrap justify-between items-start mb-4 pb-4 border-b border-slate-200 gap-4">
-      <div>
-        <div className="flex items-center gap-2 text-[10px] font-mono font-medium tracking-widest uppercase text-amber-700 mb-1">
-          <span className="w-2 h-2 bg-amber-600 rounded-full animate-pulse" />
-          Live Dashboard
-          {criticalAlertsCount > 0 && (
-            <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px]">
-              {criticalAlertsCount} Critical
-            </span>
-          )}
-        </div>
-        <h1 className="font-serif text-2xl font-medium text-slate-900">
-          Accounts Payable Command Center
-        </h1>
-        <p className="text-xs text-slate-500">Enterprise Financial Overview</p>
-      </div>
+    <header
+      className="flex flex-wrap justify-between items-center mb-5 pb-4 gap-4"
+      style={{ borderBottom: `1px solid ${CO.border}` }}
+    >
+      {/* ── Left: Logo + Title ──────────────────────────────────── */}
+      <div className="flex items-center gap-4 min-w-0">
+        {/* Real CrescentOne logo image */}
+        <img
+          src="/crescent-logo.jpg"
+          alt="CrescentOne"
+          style={{ height: 36, objectFit: 'contain', flexShrink: 0, mixBlendMode: 'multiply' }}
+        />
 
-      <div className="flex flex-col items-end gap-2">
-        <div className="font-mono text-xs text-slate-500">{date} · {time}</div>
-
-        <div className="flex gap-2 items-center flex-wrap">
-          {/* View Toggle */}
-          <div className="flex bg-slate-200 p-0.5 rounded-lg gap-0.5">
-            <button
-              onClick={() => onViewChange('dashboard')}
-              className={`px-3 py-1 rounded text-xs font-medium ${
-                view === 'dashboard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              }`}
-            >
-              Dashboard
-            </button>
-            <button
-              onClick={() => onViewChange('ai-agent')}
-              className={`px-3 py-1 rounded text-xs font-medium ${
-                view === 'ai-agent' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              }`}
-            >
-              AI Agent
-            </button>
+        <div
+          className="border-l pl-4 min-w-0"
+          style={{ borderColor: CO.border }}
+        >
+          <div
+            className="flex items-center gap-2 mb-0.5"
+            style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              fontWeight: 600,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: CO.secondary,
+            }}
+          >
+            <span
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ backgroundColor: CO.secondary, flexShrink: 0 }}
+            />
+            Live Dashboard
+            {criticalAlertsCount > 0 && (
+              <span
+                className="text-white px-1.5 py-0.5 rounded-full"
+                style={{ fontSize: 9, backgroundColor: '#DC2626' }}
+              >
+                {criticalAlertsCount} Critical
+              </span>
+            )}
           </div>
 
-          {/* Refresh Button */}
+          <h1
+            className="font-semibold truncate"
+            style={{ fontSize: 18, color: CO.primary, lineHeight: 1.25 }}
+          >
+            Accounts Payable Command Center
+          </h1>
+          <p style={{ fontSize: 11, color: CO.secondary, marginTop: 1 }}>
+            Enterprise Financial Overview
+          </p>
+        </div>
+      </div>
+
+      {/* ── Right: Date / Controls ──────────────────────────────── */}
+      <div className="flex flex-col items-end gap-2 shrink-0">
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 11,
+            color: '#6B9BAA',
+          }}
+        >
+          {date} · {time}
+        </div>
+
+        <div className="flex gap-2 items-center flex-wrap justify-end">
+          {/* View Toggle */}
+          <div
+            className="flex p-0.5 rounded-lg gap-0.5"
+            style={{ backgroundColor: CO.toggleBg }}
+          >
+            {['dashboard', 'ai-agent'].map(v => (
+              <button
+                key={v}
+                onClick={() => onViewChange(v)}
+                className="px-3 py-1 rounded text-xs font-semibold transition-all"
+                style={
+                  view === v
+                    ? { backgroundColor: CO.activeBg, color: '#ffffff' }
+                    : { color: CO.primary }
+                }
+              >
+                {v === 'dashboard' ? 'Dashboard' : 'AI Agent'}
+              </button>
+            ))}
+          </div>
+
+          {/* Refresh */}
           <button
             onClick={onRefresh}
-            className="flex items-center gap-1 px-2 py-1 border border-slate-200 rounded bg-white text-slate-500 text-xs hover:bg-slate-50"
+            title="Refresh data"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-white text-xs font-medium transition-colors hover:bg-slate-50"
+            style={{ border: `1px solid ${CO.border}`, color: '#6B9BAA' }}
           >
             <RefreshCw size={12} />
           </button>
 
-          {/* Logout Button */}
+          {/* Logout */}
           <button
             onClick={onLogout}
-            className="flex items-center gap-1 px-2 py-1 border border-red-200 rounded bg-white text-red-500 text-xs hover:bg-red-50"
+            title="Log out"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-white text-xs font-medium transition-colors hover:bg-red-50"
+            style={{ border: '1px solid #FCA5A5', color: '#EF4444' }}
           >
             <LogOut size={12} />
           </button>

@@ -637,7 +637,7 @@ export default function APDashboard() {
     setAgentMessages(prev => [...prev, { text: question, sender: 'user', cardTitle: card.title }]);
     const cardContext = { card_id: card.id, title: card.title, description: card.description, value: card.value, formatted_value: card.formatted_value, comparison_value: card.comparison_value, comparison_label: card.comparison_label, detail_line_1: card.detail_line_1, detail_line_2: card.detail_line_2, sql_query: card.sql_query, chart_type: card.chart_type, chart_config: card.chart_config, data: card.chart_data || card.data, summary: card.summary };
     try {
-      const res = await authFetch('/kpi-card-chat/chat-stream', { method: 'POST', headers: { 'Accept': 'text/event-stream' }, body: JSON.stringify({ query: question, card_context: cardContext, conversation_id: conversationId, catalog: 'finance_fusion_catalog', schema: 'finance_fusion_catalog', persona: 'CFO' }) });
+      const res = await authFetch('/conversational-bi/query-stream', { method: 'POST', headers: { 'Accept': 'text/event-stream' }, body: JSON.stringify({ query: question, card_context: cardContext, conversation_id: conversationId, catalog: 'finance_fusion_catalog', schema: 'finance_fusion_catalog', persona: 'CFO' }) });
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let buffer = '', fullAnswer = '', resultData = null, followups = [], intent = '', charts = [];
       while (true) {
         const { done, value } = await reader.read(); if (done) break;

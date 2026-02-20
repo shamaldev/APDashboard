@@ -9,7 +9,7 @@ import { cleanComparisonLabel } from '../../utils/helpers'
 import { ChartCanvas } from '../charts'
 import AIChartQueryModal from './AIChartQueryModal'
 
-const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
+const KPIModal = ({ isOpen, onClose, card, onAskQuestion, onSimpleAnswer }) => {
   const [question, setQuestion] = useState('')
   const [aiModalChart, setAiModalChart] = useState(null)
   const [chartData, setChartData] = useState(null)
@@ -205,8 +205,8 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
                             key={i}
                             className="bg-white border border-slate-200 rounded-xl p-3 text-center shadow-sm hover:shadow-md transition-shadow"
                           >
-                            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1 truncate">{m.label}</div>
-                            <div className="text-sm font-bold text-slate-900 truncate" title={m.value}>{m.value}</div>
+                            <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1">{m.label}</div>
+                            <div className="text-sm font-bold text-slate-900 break-all" title={m.value}>{m.value}</div>
                           </div>
                         ))}
                       </div>
@@ -221,7 +221,10 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
                         <button
                           key={i}
                           onClick={() => onAskQuestion(q, card)}
-                          className="text-left text-sm text-amber-700 bg-amber-50 hover:bg-amber-100 px-4 py-2.5 rounded-xl transition-all hover:shadow-sm border border-amber-100 hover:border-amber-200"
+                          className="text-left text-sm px-4 py-2.5 rounded-xl transition-all hover:shadow-sm border"
+                          style={{ color: '#1B5272', backgroundColor: '#EDF7F9', borderColor: '#C8DEDE' }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#D7EBEE'; e.currentTarget.style.borderColor = '#7DAAAD' }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#EDF7F9'; e.currentTarget.style.borderColor = '#C8DEDE' }}
                         >
                           {q}
                         </button>
@@ -235,7 +238,7 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
 
           {/* Footer Input */}
           <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80">
-            <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-100 transition-all">
+            <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-[#7DAAAD] focus-within:ring-2 focus-within:ring-[#D7EBEE] transition-all">
               <input
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
@@ -246,7 +249,10 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
               <button
                 onClick={handleSend}
                 disabled={!question.trim()}
-                className="bg-amber-600 text-white rounded-lg p-2 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 transition-colors shrink-0"
+                className="text-white rounded-lg p-2 disabled:bg-slate-200 disabled:text-slate-400 transition-colors shrink-0"
+                style={{ backgroundColor: '#2F5597' }}
+                onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#243F7A' }}
+                onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#2F5597' }}
               >
                 <Send size={14} />
               </button>
@@ -261,6 +267,11 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion }) => {
         onClose={() => setAiModalChart(null)}
         chartData={aiModalChart}
         onChartUpdate={handleChartUpdate}
+        onSimpleAnswer={(result) => {
+          setAiModalChart(null)
+          onClose()
+          if (onSimpleAnswer) onSimpleAnswer(result)
+        }}
       />
     </>
   )

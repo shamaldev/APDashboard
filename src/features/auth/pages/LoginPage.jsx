@@ -1,57 +1,87 @@
 /**
  * Login Page
- * Handles user authentication
+ * CrescentOne branded login — User Identifier + Password
  */
 
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import Cookies from 'js-cookie'
 import { jwtDecode } from 'jwt-decode'
-import { Mail } from 'lucide-react'
+import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import axiosInstance from '@config/axios'
 import { ROUTES } from '@shared/constants'
-import { FormInput, SubmitButton, AlertMessage } from '@shared/components/ui'
-import { AuthLayout, AuthFooter, PasswordInput } from '../components'
+import { AuthLayout } from '../components'
 
-const itemVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.3 } },
+/* ─── Brand tokens ─────────────────────────────────────────────── */
+const BRAND = {
+  primary:     '#1B5272',
+  button:      '#2F5597',
+  buttonHover: '#243F7A',
+  border:      '#A8C4CA',
+  focusBorder: '#2F5597',
+  focusShadow: 'rgba(47,85,151,0.14)',
+  inputBg:     '#FFFFFF',
 }
 
-const LOGIN_FEATURES = [
-  'Real-time analytics',
-  'Secure authentication',
-  'Advanced reporting'
-]
+/* ─── Error alert ───────────────────────────────────────────────── */
+const ErrorAlert = ({ message }) => (
+  <AnimatePresence>
+    {message && (
+      <motion.div
+        key="error"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          backgroundColor: '#FEF2F2',
+          border: '1px solid #FCA5A5',
+          borderRadius: 3,
+          padding: '10px 12px',
+          marginBottom: 14,
+          fontSize: 13,
+          color: '#B91C1C',
+        }}
+      >
+        <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1, color: '#EF4444' }} />
+        <span>{message}</span>
+      </motion.div>
+    )}
+  </AnimatePresence>
+)
 
+/* ─── Login Page ────────────────────────────────────────────────── */
 const LoginPage = ({ onLogin }) => {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+  const [identifier, setIdentifier] = useState('')
+  const [password,   setPassword]   = useState('')
+  const [showPass,   setShowPass]   = useState(false)
+  const [error,      setError]      = useState('')
+  const [isLoading,  setIsLoading]  = useState(false)
+  const [btnHover,   setBtnHover]   = useState(false)
 
   const navigate = useNavigate()
 
+  /* Redirect if already logged in */
   useEffect(() => {
     const token = Cookies.get('access_token')
-    if (token) {
+    if (!token) return
+    try {
       const decoded = jwtDecode(token)
-      const now = Math.floor(Date.now() / 1000)
-      if (decoded.exp > now) {
+      if (decoded.exp > Date.now() / 1000) {
         navigate(ROUTES.DASHBOARD)
       } else {
         Cookies.remove('access_token')
       }
+    } catch {
+      Cookies.remove('access_token')
     }
   }, [navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
-    if (!email || !password) {
-      setError('Please fill in all fields')
+    if (!identifier || !password) {
+      setError('Please fill in all fields.')
       return
     }
 
@@ -60,7 +90,7 @@ const LoginPage = ({ onLogin }) => {
 
     try {
       const formData = new FormData()
-      formData.append('username', email)
+      formData.append('username', identifier)
       formData.append('password', password)
 
       const response = await axiosInstance.post('/login', formData, {
@@ -72,9 +102,7 @@ const LoginPage = ({ onLogin }) => {
       const expires = new Date(decoded.exp * 1000)
 
       Cookies.set('access_token', access_token, { expires })
-
-      if (onLogin) onLogin(email, access_token)
-
+      if (onLogin) onLogin(identifier, access_token)
       navigate(ROUTES.AI_ASSISTANT)
 
       const timeout = (decoded.exp - Math.floor(Date.now() / 1000)) * 1000
@@ -86,9 +114,9 @@ const LoginPage = ({ onLogin }) => {
     } catch (err) {
       console.error('Login error:', err)
       if (err.response) {
-        setError(err.response.data?.detail || 'Invalid credentials')
+        setError(err.response.data?.detail || 'Invalid credentials. Please try again.')
       } else if (err.request) {
-        setError('Unable to connect to server. Please try again.')
+        setError('Unable to connect to server. Please check your connection.')
       } else {
         setError('An unexpected error occurred.')
       }
@@ -98,77 +126,130 @@ const LoginPage = ({ onLogin }) => {
   }
 
   return (
-    <AuthLayout
-      headline="Secure access to your"
-      highlightedText="analytics platform"
-      description="Monitor performance, analyze data, and make informed decisions with our comprehensive dashboard solution."
-      features={LOGIN_FEATURES}
-    >
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">
-          Welcome back
-        </h2>
-        <p className="text-slate-500">
-          Enter your credentials to access your account
-        </p>
-      </div>
+    <AuthLayout>
+      {/* Spinner keyframe */}
+      <style>{`@keyframes co-spin { to { transform: rotate(360deg); } }`}</style>
 
-      <AlertMessage message={error} type="error" />
+      <form onSubmit={handleSubmit} noValidate>
+        <ErrorAlert message={error} />
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <FormInput
-          id="email"
-          label="Email address"
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="name@company.com"
-          disabled={isLoading}
-          autoComplete="email"
-          icon={Mail}
-        />
+        {/* User Identifier */}
+        <div style={{ marginBottom: 10 }}>
+          <input
+            className="cr-input"
+            type="text"
+            value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
+            placeholder="User Identifier"
+            autoComplete="username"
+            disabled={isLoading}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              border: '1px solid #A8C4CA',
+              borderRadius: 2,
+              fontSize: 13,
+              color: BRAND.primary,
+              backgroundColor: BRAND.inputBg,
+              outline: 'none',
+              boxSizing: 'border-box',
+              opacity: isLoading ? 0.65 : 1,
+            }}
+          />
+        </div>
 
-        <PasswordInput
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          disabled={isLoading}
-        />
+        {/* Password */}
+        <div style={{ marginBottom: 18, position: 'relative' }}>
+          <input
+            className="cr-input"
+            type={showPass ? 'text' : 'password'}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            disabled={isLoading}
+            style={{
+              width: '100%',
+              padding: '8px 36px 8px 12px',
+              border: '1px solid #A8C4CA',
+              borderRadius: 2,
+              fontSize: 13,
+              color: BRAND.primary,
+              backgroundColor: BRAND.inputBg,
+              outline: 'none',
+              boxSizing: 'border-box',
+              opacity: isLoading ? 0.65 : 1,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPass(v => !v)}
+            disabled={isLoading}
+            style={{
+              position: 'absolute', right: 10,
+              top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none',
+              padding: 0, cursor: 'pointer',
+              color: '#A8C4CA', display: 'flex',
+            }}
+            aria-label={showPass ? 'Hide password' : 'Show password'}
+          >
+            {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
 
-        <motion.div variants={itemVariants} className="flex items-center justify-between">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={e => setRememberMe(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 focus:ring-2"
-              disabled={isLoading}
-            />
-            <span className="text-sm text-slate-600">Remember me</span>
-          </label>
+        {/* Bottom row — Reset Password | Login */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Link
             to={ROUTES.FORGOT_PASSWORD}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            style={{
+              fontSize: 13, fontWeight: 700,
+              color: '#1B3A4B', textDecoration: 'none',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
           >
-            Forgot password?
+            Reset Password
           </Link>
-        </motion.div>
 
-        <SubmitButton isLoading={isLoading} loadingText="Signing in...">
-          Sign in
-        </SubmitButton>
+          <button
+            type="submit"
+            disabled={isLoading}
+            onMouseEnter={() => setBtnHover(true)}
+            onMouseLeave={() => setBtnHover(false)}
+            style={{
+              backgroundColor: isLoading ? '#6B8FC4' : btnHover ? BRAND.buttonHover : BRAND.button,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 3,
+              padding: '7px 28px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              transition: 'background-color 0.18s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+            }}
+          >
+            {isLoading ? (
+              <>
+                <svg
+                  width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor"
+                  strokeWidth="3" strokeLinecap="round"
+                  style={{ animation: 'co-spin 0.9s linear infinite' }}
+                >
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                </svg>
+                Logging in…
+              </>
+            ) : (
+              'Login'
+            )}
+          </button>
+        </div>
       </form>
-
-      <motion.p className="mt-8 text-center text-sm text-slate-500" variants={itemVariants}>
-        Don't have an account?{' '}
-        <Link
-          to={ROUTES.SIGNUP}
-          className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-        >
-          Create an account
-        </Link>
-      </motion.p>
-
-      <AuthFooter actionText="signing in" />
     </AuthLayout>
   )
 }

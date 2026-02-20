@@ -72,11 +72,25 @@ const PrivateRoute = () => {
   // Loading state
   if (isValid === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500 text-sm">Verifying session...</p>
-        </div>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ backgroundColor: '#D7EBEE' }}
+      >
+        <img
+          src="/crescent-logo.jpg"
+          alt="CrescentOne"
+          style={{ height: 40, objectFit: 'contain', marginBottom: 24, mixBlendMode: 'multiply' }}
+        />
+        <div
+          className="rounded-full animate-spin mb-3"
+          style={{
+            width: 36,
+            height: 36,
+            border: '3px solid #B8D9DE',
+            borderTopColor: '#1B5272',
+          }}
+        />
+        <p style={{ fontSize: 13, color: '#7DAAAD' }}>Verifying session...</p>
       </div>
     )
   }

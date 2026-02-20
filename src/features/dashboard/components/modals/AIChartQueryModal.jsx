@@ -6,7 +6,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { X, Send, Sparkles, Loader2, MoreVertical } from 'lucide-react'
 import { post } from '@shared/services/api.service'
-import { useNavigate } from 'react-router-dom'
 
 const CHART_TYPES = [
   { value: 'line_chart', label: 'Line Chart', icon: '📈' },
@@ -21,7 +20,7 @@ const CHART_TYPES = [
   { value: 'clustered_bar_chart', label: 'Clustered Bar', icon: '📊' },
 ]
 
-const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate }) => {
+const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate, onSimpleAnswer }) => {
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -29,7 +28,6 @@ const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate }) => {
   const [selectedChartType, setSelectedChartType] = useState(null)
   const [showChartTypeMenu, setShowChartTypeMenu] = useState(false)
   const menuRef = useRef(null)
-  const navigate = useNavigate()
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -47,6 +45,29 @@ const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate }) => {
 
   if (!isOpen || !chartData) return null
 
+  // Normalize chart data to match backend expected structure
+  const buildRequestBody = (queryText) => {
+    const normalizedChartData = {
+      ...chartData,
+      sql_query: chartData.sql_query || chartData.chart_sql || '',
+      kpi: chartData.kpi || {
+        title: chartData.title || 'Chart',
+        description: chartData.description || '',
+        chart_type: chartData.chart_type || ''
+      }
+    }
+
+    return {
+      query: queryText,
+      chart_data: normalizedChartData,
+      catalog: chartData.catalog || 'finance_fusion_catalog',
+      schema: chartData.schema || 'finance_fusion_catalog',
+      persona: chartData.persona || 'CFO',
+      schema_text: chartData.schema_text || '',
+      chart_id: chartData.chart_id || null
+    }
+  }
+
   const handleSubmit = async () => {
     if (!query.trim() || isLoading) return
 
@@ -55,31 +76,21 @@ const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate }) => {
     setShowChartTypeSelector(false)
 
     try {
-      const requestBody = {
-        query: query.trim(),
-        chart_data: chartData,
-        catalog: chartData.catalog || 'finance_fusion_catalog',
-        schema: chartData.schema || 'finance_fusion_catalog',
-        persona: chartData.persona || 'CFO',
-        schema_text: chartData.schema_text || '',
-        chart_id: chartData.chart_id || null
-      }
+      const requestBody = buildRequestBody(query.trim())
 
       const response = await post('/conversational-bi/query-chart', requestBody)
 
       // Handle different intents
       if (response.intent === 'simple_question') {
-        // Navigate to AI assistant with the answer
-        navigate('/ai-assistant', {
-          state: {
-            chartQuery: {
-              question: query,
-              answer: response.answer,
-              chartData: chartData,
-              suggestedActions: response.suggested_actions || []
-            }
-          }
-        })
+        // Show answer directly in AI agent chat
+        if (onSimpleAnswer) {
+          onSimpleAnswer({
+            question: query.trim(),
+            answer: response.answer,
+            chartData,
+            suggestedActions: response.suggested_actions || []
+          })
+        }
         onClose()
       } else if (response.intent === 'change_chart_type') {
         // Show chart type selector or update chart if type already provided
@@ -127,15 +138,7 @@ const AIChartQueryModal = ({ isOpen, onClose, chartData, onChartUpdate }) => {
     setShowChartTypeMenu(false)
 
     try {
-      const requestBody = {
-        query: `Change to ${chartType.label}`,
-        chart_data: chartData,
-        catalog: chartData.catalog || 'finance_fusion_catalog',
-        schema: chartData.schema || 'finance_fusion_catalog',
-        persona: chartData.persona || 'CFO',
-        schema_text: chartData.schema_text || '',
-        chart_id: chartData.chart_id || null
-      }
+      const requestBody = buildRequestBody(`Change to ${chartType.label}`)
 
       const response = await post('/conversational-bi/query-chart', requestBody)
 

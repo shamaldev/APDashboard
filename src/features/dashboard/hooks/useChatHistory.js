@@ -107,6 +107,14 @@ const useChatHistory = () => {
     loadConversations(true)
   }, [])
 
+  // Periodic polling every 30s to keep sidebar fresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadConversations(true)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   return {
     conversations,
     isLoading,

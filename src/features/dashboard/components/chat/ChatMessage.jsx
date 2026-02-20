@@ -4,7 +4,7 @@
  * Supports: greeting, out_of_scope, simple, complex_why query types
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AlertTriangle, Database, ChevronDown, ChevronUp, Volume2, VolumeX, Pause, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
 import { ChartCanvas } from '../charts'
 import AIChartQueryModal from '../modals/AIChartQueryModal'
@@ -19,12 +19,18 @@ const ChatMessage = ({
   onSpeak,
   isSpeaking,
   isPaused,
-  currentSpeakingId
+  currentSpeakingId,
+  onSimpleAnswer
 }) => {
   const isUser = message.sender === 'user'
   const [showSql, setShowSql] = useState(false)
   const [aiModalChart, setAiModalChart] = useState(null)
   const [charts, setCharts] = useState(message.charts || [])
+
+  // Sync charts state when message.charts changes (e.g., loading a different conversation)
+  useEffect(() => {
+    setCharts(message.charts || [])
+  }, [message.charts])
 
   // Check if this message is currently being spoken
   const isThisMessageSpeaking = currentSpeakingId === messageIndex && isSpeaking
@@ -80,11 +86,12 @@ const ChatMessage = ({
       )}
 
       {/* Message bubble */}
-      <div className={`px-4 py-3 rounded-2xl text-sm ${
-        isUser
-          ? 'bg-amber-600 text-white rounded-br-sm'
-          : 'bg-slate-100 text-slate-900 rounded-bl-sm'
-      }`}>
+      <div
+        className={`px-4 py-3 rounded-2xl text-sm ${
+          isUser ? 'text-white rounded-br-sm' : 'bg-slate-100 text-slate-900 rounded-bl-sm'
+        }`}
+        style={isUser ? { backgroundColor: '#2F5597' } : {}}
+      >
         {/* Query type badge for AI messages */}
         {!isUser && message.queryType && message.queryType !== 'simple' && (
           <div className="mb-2">
@@ -92,11 +99,13 @@ const ChatMessage = ({
               message.queryType === 'greeting' ? 'bg-blue-100 text-blue-700' :
               message.queryType === 'out_of_scope' ? 'bg-slate-200 text-slate-600' :
               message.queryType === 'complex_why' ? 'bg-purple-100 text-purple-700' :
+              message.queryType === 'kpi_card_explain' ? 'bg-teal-100 text-teal-700' :
               'bg-slate-200 text-slate-600'
             }`}>
               {message.queryType === 'greeting' && 'Welcome'}
               {message.queryType === 'out_of_scope' && 'Info'}
               {message.queryType === 'complex_why' && 'Deep Analysis'}
+              {message.queryType === 'kpi_card_explain' && 'KPI Analysis'}
             </span>
           </div>
         )}
@@ -107,7 +116,8 @@ const ChatMessage = ({
           const assessmentStyles = {
             critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', icon: <AlertCircle size={14} />, label: 'Critical' },
             warning: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: <AlertTriangle size={14} />, label: 'Warning' },
-            ok: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: <CheckCircle size={14} />, label: 'Healthy' }
+            ok: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: <CheckCircle size={14} />, label: 'Healthy' },
+            info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', icon: <AlertCircle size={14} />, label: 'Info' }
           }
           const style = assessmentStyles[diag.assessment] || assessmentStyles.warning
           return (
@@ -116,6 +126,16 @@ const ChatMessage = ({
               <div className="text-[13px] font-bold text-slate-900 leading-snug">
                 {diag.headline}
               </div>
+
+              {/* Follow-up reuse indicator */}
+              {diag.diagnostic_type === 'followup_partial' && diag.metadata?.reuse_type && (
+                <div className="text-[9px] text-slate-400 mt-0.5">
+                  {diag.metadata.reused_charts > 0
+                    ? `Building on ${diag.metadata.reused_charts} previous chart(s)`
+                    : 'Follow-up analysis'}
+                  {diag.metadata.new_queries > 0 && ` + ${diag.metadata.new_queries} new`}
+                </div>
+              )}
 
               {/* Assessment badge */}
               <div className={`flex items-start gap-2 p-2.5 rounded-lg border ${style.bg} ${style.border}`}>
@@ -151,9 +171,10 @@ const ChatMessage = ({
                     {diag.root_causes.map((rc, i) => (
                       <div key={i} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-slate-200">
                         <div className="shrink-0">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${
-                            rc.classification === 'Strategic' ? 'bg-blue-500' : 'bg-amber-500'
-                          }`}>
+                          <div
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                            style={{ backgroundColor: rc.classification === 'Strategic' ? '#2F5597' : '#7DAAAD' }}
+                          >
                             {rc.percentage}%
                           </div>
                         </div>
@@ -162,7 +183,7 @@ const ChatMessage = ({
                           <div className="text-[10px] text-slate-500">{rc.description}</div>
                           {rc.amount && <div className="text-[10px] font-medium text-slate-600 mt-0.5">{rc.amount}</div>}
                         </div>
-                        <TrendingUp size={14} className={rc.classification === 'Strategic' ? 'text-blue-400' : 'text-amber-400'} />
+                        <TrendingUp size={14} style={{ color: rc.classification === 'Strategic' ? '#6B8FC4' : '#7DAAAD' }} />
                       </div>
                     ))}
                   </div>
@@ -194,11 +215,12 @@ const ChatMessage = ({
           <div className="mt-2 flex items-center gap-2">
             <button
               onClick={() => onSpeak(message.text, messageIndex)}
-              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors ${
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors"
+              style={
                 isThisMessageSpeaking
-                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                  : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-              }`}
+                  ? { backgroundColor: '#D7EBEE', color: '#1B5272' }
+                  : { backgroundColor: '#E2E8F0', color: '#475569' }
+              }
               title={isThisMessageSpeaking ? (isPaused ? 'Resume' : 'Pause') : 'Read aloud'}
             >
               {isThisMessageSpeaking ? (
@@ -337,6 +359,7 @@ const ChatMessage = ({
           onClose={() => setAiModalChart(null)}
           chartData={aiModalChart}
           onChartUpdate={handleChartUpdate}
+          onSimpleAnswer={onSimpleAnswer}
         />
 
         {/* Strategic Recommendations (for complex_why) */}
@@ -388,7 +411,10 @@ const ChatMessage = ({
                   key={j}
                   onClick={() => handleFollowUp(f)}
                   disabled={isChatLoading}
-                  className="text-[10px] text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded disabled:opacity-50 text-left transition-colors"
+                  className="text-[10px] px-2 py-1 rounded disabled:opacity-50 text-left transition-colors"
+                  style={{ color: '#1B5272', backgroundColor: '#EDF7F9' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#D7EBEE')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#EDF7F9')}
                 >
                   {f.length > 50 ? f.substring(0, 50) + '...' : f}
                 </button>

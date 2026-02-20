@@ -3,14 +3,29 @@
  * Sidebar with chat history, suggested topics and active context
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, X, MessageSquare, Clock, Trash2, Archive, ChevronDown, Loader2 } from 'lucide-react'
 
-// Format relative time
+// Format relative time — handles ISO strings, epoch seconds, and epoch milliseconds
 const formatRelativeTime = (dateString) => {
-  const date = new Date(dateString)
+  if (!dateString) return ''
+
+  let date
+  const num = typeof dateString === 'number' ? dateString : Number(dateString)
+
+  if (!isNaN(num) && String(dateString).match(/^\d+(\.\d+)?$/)) {
+    // Numeric timestamp: epoch seconds (< 1e12) vs milliseconds (>= 1e12)
+    date = new Date(num < 1e12 ? num * 1000 : num)
+  } else {
+    date = new Date(dateString)
+  }
+
+  if (isNaN(date.getTime())) return ''
+
   const now = new Date()
   const diffMs = now - date
+  if (diffMs < 0) return 'Just now'
+
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
   const diffDays = Math.floor(diffMs / 86400000)
@@ -38,13 +53,42 @@ const ChatSidebar = ({
 }) => {
   const [showHistory, setShowHistory] = useState(true)
   const [hoveredId, setHoveredId] = useState(null)
+  const listRef = useRef(null)
+
+  // Force re-render every 60s to keep relative timestamps fresh
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Scroll active conversation into view when it changes
+  useEffect(() => {
+    if (activeConversationId && listRef.current) {
+      const activeEl = listRef.current.querySelector('[data-active="true"]')
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }
+  }, [activeConversationId])
+
+  // Sort conversations: active conversation always at top, rest by API order (last_updated desc)
+  const sortedConversations = useMemo(() => {
+    if (!activeConversationId || conversations.length === 0) return conversations
+    const active = conversations.filter(c => c.conversation_id === activeConversationId)
+    const rest = conversations.filter(c => c.conversation_id !== activeConversationId)
+    return [...active, ...rest]
+  }, [conversations, activeConversationId])
 
   return (
     <div className="w-56 bg-slate-50 border-r border-slate-200 p-3 flex flex-col">
       {/* New Chat Button */}
       <button
         onClick={onNewChat}
-        className="flex items-center gap-2 px-3 py-2 bg-amber-600 text-white rounded text-xs font-medium mb-3 hover:bg-amber-700"
+        className="flex items-center gap-2 px-3 py-2 text-white rounded text-xs font-semibold mb-3 transition-colors"
+        style={{ backgroundColor: '#2F5597' }}
+        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#243F7A')}
+        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#2F5597')}
       >
         <Plus size={14} />
         New Chat
@@ -67,31 +111,44 @@ const ChatSidebar = ({
         </button>
 
         {showHistory && (
-          <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-            {conversations.length === 0 && !isLoadingHistory && (
+          <div ref={listRef} className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+            {sortedConversations.length === 0 && !isLoadingHistory && (
               <div className="text-[10px] text-slate-400 text-center py-2">
                 No conversations yet
               </div>
             )}
 
-            {conversations.map((conv) => (
+            {sortedConversations.map((conv) => (
               <div
                 key={conv.conversation_id}
+                data-active={activeConversationId === conv.conversation_id ? 'true' : undefined}
                 onMouseEnter={() => setHoveredId(conv.conversation_id)}
                 onMouseLeave={() => setHoveredId(null)}
                 className={`group relative flex items-start gap-2 px-2 py-1.5 rounded text-xs cursor-pointer transition-colors ${
                   activeConversationId === conv.conversation_id
-                    ? 'bg-amber-100 text-amber-900'
+                    ? 'text-white'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
+                style={
+                  activeConversationId === conv.conversation_id
+                    ? { backgroundColor: '#1B5272' }
+                    : {}
+                }
                 onClick={() => onSelectConversation?.(conv.conversation_id)}
               >
-                <MessageSquare size={12} className="mt-0.5 flex-shrink-0 text-slate-400" />
+                <MessageSquare
+                  size={12}
+                  className="mt-0.5 shrink-0"
+                  style={{ color: activeConversationId === conv.conversation_id ? '#B0D4DC' : undefined }}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium text-[11px]">
                     {conv.title || 'Untitled conversation'}
                   </div>
-                  <div className="flex items-center gap-1 text-[9px] text-slate-400">
+                  <div
+                    className="flex items-center gap-1 text-[9px]"
+                    style={{ color: activeConversationId === conv.conversation_id ? '#B0D4DC' : '#94A3B8' }}
+                  >
                     <span>{formatRelativeTime(conv.last_updated)}</span>
                     {conv.total_queries > 0 && (
                       <>
@@ -139,7 +196,8 @@ const ChatSidebar = ({
               <button
                 onClick={onLoadMore}
                 disabled={isLoadingHistory}
-                className="text-[10px] text-amber-600 hover:text-amber-700 py-1 text-center disabled:opacity-50"
+                className="text-[10px] py-1 text-center disabled:opacity-50 font-medium transition-colors"
+                style={{ color: '#1B5272' }}
               >
                 {isLoadingHistory ? (
                   <span className="flex items-center justify-center gap-1">
@@ -176,7 +234,7 @@ const ChatSidebar = ({
             <div className="text-xs font-medium text-slate-900 truncate">
               {activeCard.title}
             </div>
-            <div className="text-[10px] text-amber-600 font-semibold">
+            <div className="text-[10px] font-semibold" style={{ color: '#1B5272' }}>
               {activeCard.formatted_value}
             </div>
           </div>

@@ -1,25 +1,102 @@
 /**
  * ChartCanvas Component
  * Renders various chart types on HTML canvas
+ * Handles large datasets with data truncation and dynamic sizing
  */
 
 import { useRef, useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { CHART_COLORS } from '../../utils/constants'
 
+/**
+ * Truncate large datasets per chart type for readable rendering
+ */
+const prepareChartData = (data, chartType) => {
+  if (!data || data.length === 0) return { displayData: data, totalCount: 0, isTruncated: false }
+
+  const totalCount = data.length
+  let maxItems
+  switch (chartType) {
+    case 'horizontal_bar_chart': maxItems = 25; break
+    case 'vertical_bar_chart':
+    case 'stacked_bar_chart':
+    case 'pareto_chart': maxItems = 15; break
+    case 'pie_chart': maxItems = 8; break
+    case 'clustered_bar_chart': maxItems = 10; break
+    case 'funnel_chart': maxItems = 8; break
+    case 'line_chart':
+    case 'area_chart': maxItems = 60; break
+    default: maxItems = 15
+  }
+
+  if (totalCount <= maxItems) return { displayData: data, totalCount, isTruncated: false }
+  return { displayData: data.slice(0, maxItems), totalCount, isTruncated: true }
+}
+
+/**
+ * For pie charts, group excess slices into "Others"
+ */
+const preparePieData = (data, chartConfig) => {
+  if (!data || data.length <= 8) return { displayData: data, totalCount: data?.length || 0, isTruncated: false }
+
+  const valueCol = chartConfig?.value_col_name || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
+  const categoryCol = chartConfig?.category_col_name || Object.keys(data[0])[0]
+
+  const topItems = data.slice(0, 7)
+  const remainingItems = data.slice(7)
+  const othersValue = remainingItems.reduce((sum, d) => sum + (Number(d[valueCol]) || 0), 0)
+
+  const othersRow = { ...remainingItems[0] }
+  othersRow[categoryCol] = `Others (${remainingItems.length})`
+  othersRow[valueCol] = othersValue
+
+  return { displayData: [...topItems, othersRow], totalCount: data.length, isTruncated: true }
+}
+
+/**
+ * Dynamic canvas height based on data count and chart type
+ */
+const calculateCanvasHeight = (dataCount, chartType, hasTitle) => {
+  switch (chartType) {
+    case 'horizontal_bar_chart': {
+      const needed = (hasTitle ? 25 : 12) + dataCount * 28 + 60
+      return Math.max(270, Math.min(600, needed))
+    }
+    case 'vertical_bar_chart':
+    case 'stacked_bar_chart':
+    case 'pareto_chart':
+    case 'clustered_bar_chart':
+      return dataCount > 10 ? 320 : 270
+    case 'pie_chart':
+      return Math.max(270, Math.min(400, dataCount * 24 + 40))
+    default:
+      return 270
+  }
+}
+
 const ChartCanvas = ({ chartConfig, data, chartType, title, onAIClick, showAIButton = false }) => {
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
   const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, value: '', label: '' })
   const elementsRef = useRef([])
+  const [canvasHeight, setCanvasHeight] = useState(270)
 
   useEffect(() => {
     if (!canvasRef.current || !data || data.length === 0) return
 
+    // Prepare data (truncate for large datasets)
+    const { displayData, totalCount, isTruncated } =
+      chartType === 'pie_chart'
+        ? preparePieData(data, chartConfig)
+        : prepareChartData(data, chartType)
+
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     canvas.width = canvas.parentElement.offsetWidth
-    canvas.height = chartType === 'horizontal_bar_chart' && data.length > 8 ? 320 : 270
+
+    const computedHeight = calculateCanvasHeight(displayData.length, chartType, !!title)
+    canvas.height = computedHeight
+    setCanvasHeight(computedHeight)
 
     const w = canvas.width
     const h = canvas.height
@@ -35,29 +112,37 @@ const ChartCanvas = ({ chartConfig, data, chartType, title, onAIClick, showAIBut
       ctx.fillText(title, w / 2, 14)
     }
 
-    const xCol = chartConfig?.x_axis_col_name || Object.keys(data[0])[0]
+    const xCol = chartConfig?.x_axis_col_name || Object.keys(displayData[0])[0]
     const yColArr = chartConfig?.y_axis_col_name || []
-    const yCol = Array.isArray(yColArr) ? yColArr[0] : yColArr || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
+    const yCol = Array.isArray(yColArr) ? yColArr[0] : yColArr || Object.keys(displayData[0]).find(k => typeof displayData[0][k] === 'number')
 
     let elements = []
     if (chartType === 'horizontal_bar_chart') {
-      elements = renderHorizontalBarChart(ctx, data, xCol, yColArr, yCol, w, h, pad)
+      elements = renderHorizontalBarChart(ctx, displayData, xCol, yColArr, yCol, w, h, pad)
     } else if (chartType === 'line_chart' || chartType === 'area_chart') {
-      elements = renderLineChart(ctx, data, xCol, yCol, w, h, pad, chartType === 'area_chart')
+      elements = renderLineChart(ctx, displayData, xCol, yCol, w, h, pad, chartType === 'area_chart')
     } else if (chartType === 'pareto_chart') {
-      elements = renderParetoChart(ctx, data, xCol, yCol, w, h, pad, chartConfig)
+      elements = renderParetoChart(ctx, displayData, xCol, yCol, w, h, pad, chartConfig)
     } else if (chartType === 'stacked_bar_chart' || chartType === 'vertical_bar_chart') {
-      elements = renderVerticalBarChart(ctx, data, xCol, yCol, w, h, pad)
+      elements = renderVerticalBarChart(ctx, displayData, xCol, yCol, w, h, pad)
     } else if (chartType === 'pie_chart') {
-      elements = renderPieChart(ctx, data, chartConfig, w, h)
+      elements = renderPieChart(ctx, displayData, chartConfig, w, h)
     } else if (chartType === 'clustered_bar_chart') {
-      elements = renderClusteredBarChart(ctx, data, chartConfig, w, h, pad)
+      elements = renderClusteredBarChart(ctx, displayData, chartConfig, w, h, pad)
     } else if (chartType === 'funnel_chart') {
-      elements = renderFunnelChart(ctx, data, chartConfig, w, h, pad)
+      elements = renderFunnelChart(ctx, displayData, chartConfig, w, h, pad)
     } else {
-      // Fallback to vertical bar chart for unsupported types
-      elements = renderVerticalBarChart(ctx, data, xCol, yCol, w, h, pad)
+      elements = renderVerticalBarChart(ctx, displayData, xCol, yCol, w, h, pad)
     }
+
+    // Draw truncation indicator
+    if (isTruncated) {
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = 'italic 9px sans-serif'
+      ctx.textAlign = 'right'
+      ctx.fillText(`Showing ${displayData.length} of ${totalCount}`, w - 10, h - 5)
+    }
+
     elementsRef.current = elements
   }, [chartConfig, data, chartType, title])
 
@@ -98,6 +183,7 @@ const ChartCanvas = ({ chartConfig, data, chartType, title, onAIClick, showAIBut
     <div
       ref={containerRef}
       className="relative"
+      style={canvasHeight > 400 ? { maxHeight: 400, overflowY: 'auto' } : undefined}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -106,6 +192,7 @@ const ChartCanvas = ({ chartConfig, data, chartType, title, onAIClick, showAIBut
         <button
           onClick={onAIClick}
           className="absolute top-2 right-2 z-20 bg-white hover:bg-amber-50 text-amber-600 p-1.5 rounded-lg border border-amber-200 shadow-sm transition-all hover:shadow-md group"
+          style={canvasHeight > 400 ? { position: 'sticky' } : undefined}
           title="Ask AI about this chart"
         >
           <Sparkles size={16} className="group-hover:scale-110 transition-transform" />
@@ -131,12 +218,10 @@ const ChartCanvas = ({ chartConfig, data, chartType, title, onAIClick, showAIBut
 }
 
 const renderHorizontalBarChart = (ctx, data, xCol, yColArr, yCol, w, h, pad) => {
-  // For horizontal bar charts: x_axis = value axis (horizontal), y_axis = category axis (vertical)
   const yColName = Array.isArray(yColArr) ? yColArr[0] : yColArr
   const labelCol = yColName || Object.keys(data[0]).find(k => typeof data[0][k] === 'string') || Object.keys(data[0])[0]
   let valueCol = xCol
 
-  // Get values from the configured column
   let values = data.map(d => Number(d[valueCol]) || 0)
 
   // Fallback: if all values are 0/null, find a numeric column with real data
@@ -158,7 +243,8 @@ const renderHorizontalBarChart = (ctx, data, xCol, yColArr, yCol, w, h, pad) => 
   const maxLabelWidth = Math.max(...labels.map(l => ctx.measureText(String(l).substring(0, 18)).width))
   const leftPad = Math.max(pad.l, maxLabelWidth + 15)
 
-  const barH = Math.min(20, (h - pad.t - pad.b) / values.length * 0.75)
+  // Ensure minimum bar height for readability
+  const barH = Math.max(12, Math.min(22, (h - pad.t - pad.b) / values.length * 0.75))
   const gap = (h - pad.t - pad.b - barH * values.length) / (values.length + 1)
   const elements = []
 
@@ -172,7 +258,6 @@ const renderHorizontalBarChart = (ctx, data, xCol, yColArr, yCol, w, h, pad) => 
     ctx.lineTo(x, h - pad.b)
     ctx.stroke()
 
-    // X-axis labels
     ctx.fillStyle = '#94a3b8'
     ctx.font = '9px sans-serif'
     ctx.textAlign = 'center'
@@ -183,7 +268,6 @@ const renderHorizontalBarChart = (ctx, data, xCol, yColArr, yCol, w, h, pad) => 
     const y = pad.t + gap + i * (barH + gap)
     const barW = Math.max(1, (v / max) * (w - leftPad - pad.r))
 
-    // Bar with rounded end
     ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]
     ctx.beginPath()
     drawRoundRect(ctx, leftPad, y, barW, barH, [0, 3, 3, 0])
@@ -193,7 +277,7 @@ const renderHorizontalBarChart = (ctx, data, xCol, yColArr, yCol, w, h, pad) => 
     ctx.fillStyle = '#334155'
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'right'
-    const labelText = String(labels[i]).length > 18 ? String(labels[i]).substring(0, 17) + '…' : String(labels[i])
+    const labelText = String(labels[i]).length > 18 ? String(labels[i]).substring(0, 17) + '\u2026' : String(labels[i])
     ctx.fillText(labelText, leftPad - 8, y + barH / 2 + 3)
 
     // Value at end of bar
@@ -234,7 +318,6 @@ const renderLineChart = (ctx, data, xCol, yCol, w, h, pad, isAreaChart = false) 
     ctx.fillText(formatValue(val), pad.l - 8, y + 3)
   }
 
-  // Calculate point positions
   const getX = (i) => pad.l + (i / (values.length - 1 || 1)) * chartW
   const getY = (v) => pad.t + chartH - ((v - min) / range) * chartH
 
@@ -249,9 +332,9 @@ const renderLineChart = (ctx, data, xCol, yCol, w, h, pad, isAreaChart = false) 
     ctx.fill()
   }
 
-  // Draw line with smooth curve
+  // Draw line
   ctx.strokeStyle = CHART_COLORS[0]
-  ctx.lineWidth = 2.5
+  ctx.lineWidth = values.length > 30 ? 1.5 : 2.5
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
   ctx.beginPath()
@@ -260,27 +343,31 @@ const renderLineChart = (ctx, data, xCol, yCol, w, h, pad, isAreaChart = false) 
   })
   ctx.stroke()
 
-  // Draw points with white border
+  // Draw points - skip visible dots for dense data, but keep hitboxes for tooltips
+  const showDots = values.length <= 30
+  const dotRadius = values.length > 20 ? 2.5 : 3.5
+  const borderRadius = values.length > 20 ? 3.5 : 5
+
   values.forEach((v, i) => {
     const x = getX(i)
     const y = getY(v)
 
-    // White border
-    ctx.fillStyle = '#fff'
-    ctx.beginPath()
-    ctx.arc(x, y, 5, 0, Math.PI * 2)
-    ctx.fill()
+    if (showDots) {
+      ctx.fillStyle = '#fff'
+      ctx.beginPath()
+      ctx.arc(x, y, borderRadius, 0, Math.PI * 2)
+      ctx.fill()
 
-    // Colored center
-    ctx.fillStyle = CHART_COLORS[0]
-    ctx.beginPath()
-    ctx.arc(x, y, 3.5, 0, Math.PI * 2)
-    ctx.fill()
+      ctx.fillStyle = CHART_COLORS[0]
+      ctx.beginPath()
+      ctx.arc(x, y, dotRadius, 0, Math.PI * 2)
+      ctx.fill()
+    }
 
     elements.push({ type: 'point', x, y, label: labels[i], formattedValue: formatValue(v) })
   })
 
-  // Draw X-axis labels
+  // Draw X-axis labels with smart stepping
   ctx.fillStyle = '#475569'
   ctx.font = '9px sans-serif'
   ctx.textAlign = 'center'
@@ -288,13 +375,12 @@ const renderLineChart = (ctx, data, xCol, yCol, w, h, pad, isAreaChart = false) 
   labels.forEach((l, i) => {
     if (i % labelStep === 0 || i === labels.length - 1) {
       const x = getX(i)
-      // Format date labels nicely
       let labelText = String(l)
       if (labelText.match(/^\d{4}-\d{2}/)) {
         const d = new Date(labelText)
         if (!isNaN(d)) labelText = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
       } else {
-        labelText = labelText.length > 10 ? labelText.substring(0, 9) + '…' : labelText
+        labelText = labelText.length > 10 ? labelText.substring(0, 9) + '\u2026' : labelText
       }
       ctx.fillText(labelText, x, h - pad.b + 14)
     }
@@ -337,26 +423,31 @@ const renderVerticalBarChart = (ctx, data, xCol, yCol, w, h, pad) => {
     drawRoundRect(ctx, x, h - pad.b - barH, barW, barH, [3, 3, 0, 0])
     ctx.fill()
 
-    // Value on top of bar
+    // Value on top of bar (skip if too dense)
     ctx.fillStyle = '#475569'
     ctx.font = '9px sans-serif'
     ctx.textAlign = 'center'
-    if (v > 0) ctx.fillText(formatValue(v), x + barW / 2, h - pad.b - barH - 4)
+    const valueStep = values.length > 10 ? Math.ceil(values.length / 10) : 1
+    if (v > 0 && (i % valueStep === 0 || i === values.length - 1)) {
+      ctx.fillText(formatValue(v), x + barW / 2, h - pad.b - barH - 4)
+    }
 
     elements.push({ type: 'bar', x, y: h - pad.b - barH, width: barW, height: barH, label: labels[i], formattedValue: formatValue(v) })
   })
 
-  // Draw X-axis labels (smarter truncation based on available width)
+  // Draw X-axis labels with smart stepping for dense charts
   ctx.fillStyle = '#475569'
   ctx.font = '9px sans-serif'
   const maxLabelLen = Math.max(8, Math.floor((barW + gap) / 5))
+  const labelStep = values.length > 10 ? Math.ceil(values.length / 10) : 1
   labels.forEach((l, i) => {
+    if (i % labelStep !== 0 && i !== labels.length - 1) return
     const x = pad.l + i * (barW + gap) + gap / 2 + barW / 2
     ctx.save()
     ctx.translate(x, h - pad.b + 10)
     ctx.rotate(-Math.PI / 6)
     ctx.textAlign = 'right'
-    const labelText = String(l).length > maxLabelLen ? String(l).substring(0, maxLabelLen - 1) + '…' : String(l)
+    const labelText = String(l).length > maxLabelLen ? String(l).substring(0, maxLabelLen - 1) + '\u2026' : String(l)
     ctx.fillText(labelText, 0, 0)
     ctx.restore()
   })
@@ -364,7 +455,6 @@ const renderVerticalBarChart = (ctx, data, xCol, yCol, w, h, pad) => {
 }
 
 const renderParetoChart = (ctx, data, xCol, yCol, w, h, pad, chartConfig) => {
-  // Get value and cumulative columns
   const valueCol = yCol || chartConfig?.value_col_name || 'value'
   const cumulativeCol = chartConfig?.cumulative_line || 'cumulative_pct'
 
@@ -396,7 +486,7 @@ const renderParetoChart = (ctx, data, xCol, yCol, w, h, pad, chartConfig) => {
 
   // Draw cumulative line (right Y-axis, 0-100%)
   if (cumulatives.some(c => c > 0)) {
-    ctx.strokeStyle = '#ef4444' // Red color for cumulative line
+    ctx.strokeStyle = '#ef4444'
     ctx.lineWidth = 2
     ctx.beginPath()
 
@@ -435,16 +525,18 @@ const renderParetoChart = (ctx, data, xCol, yCol, w, h, pad, chartConfig) => {
     }
   }
 
-  // Draw X-axis labels
+  // Draw X-axis labels with stepping for dense data
   ctx.fillStyle = '#64748b'
   ctx.font = '9px sans-serif'
   ctx.textAlign = 'right'
+  const labelStep = values.length > 10 ? Math.ceil(values.length / 10) : 1
   labels.forEach((l, i) => {
+    if (i % labelStep !== 0 && i !== labels.length - 1) return
     const x = pad.l + i * (barW + gap) + gap / 2 + barW / 2
     ctx.save()
     ctx.translate(x, h - pad.b + 12)
     ctx.rotate(-Math.PI / 4)
-    const labelText = String(l).length > 12 ? String(l).substring(0, 11) + '…' : String(l)
+    const labelText = String(l).length > 12 ? String(l).substring(0, 11) + '\u2026' : String(l)
     ctx.fillText(labelText, 0, 0)
     ctx.restore()
   })
@@ -469,7 +561,6 @@ const renderPieChart = (ctx, data, chartConfig, w, h) => {
   const labels = data.map(d => d[categoryCol] || '')
   const total = values.reduce((a, b) => a + b, 0) || 1
 
-  // Position pie to the right, legend to the left
   const legendWidth = 140
   const centerX = legendWidth + (w - legendWidth) / 2
   const centerY = h / 2
@@ -483,7 +574,6 @@ const renderPieChart = (ctx, data, chartConfig, w, h) => {
     const endAngle = currentAngle + sliceAngle
     const midAngle = currentAngle + sliceAngle / 2
 
-    // Draw slice
     ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]
     ctx.beginPath()
     ctx.moveTo(centerX, centerY)
@@ -491,7 +581,6 @@ const renderPieChart = (ctx, data, chartConfig, w, h) => {
     ctx.closePath()
     ctx.fill()
 
-    // Draw percentage inside slice (only if large enough)
     const pct = ((v / total) * 100).toFixed(0) + '%'
     if (sliceAngle > 0.3) {
       const labelX = centerX + Math.cos(midAngle) * radius * 0.65
@@ -521,19 +610,16 @@ const renderPieChart = (ctx, data, chartConfig, w, h) => {
     const x = 10
     const y = legendStartY + i * 22
 
-    // Color dot
     ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]
     ctx.beginPath()
     ctx.arc(x + 5, y, 5, 0, Math.PI * 2)
     ctx.fill()
 
-    // Label text
     ctx.fillStyle = '#334155'
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'left'
     ctx.fillText(String(label).substring(0, 22), x + 15, y + 3)
 
-    // Value below label
     const pct = ((values[i] / total) * 100).toFixed(1) + '%'
     ctx.fillStyle = '#94a3b8'
     ctx.font = '9px sans-serif'
@@ -548,7 +634,6 @@ const renderClusteredBarChart = (ctx, data, chartConfig, w, h, pad) => {
   const yCol = chartConfig?.y_axis_col_name || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
   const clusterCol = chartConfig?.cluster_by || 'cluster'
 
-  // Group data by x category and cluster
   const grouped = {}
   data.forEach(d => {
     const category = d[xCol] || 'Unknown'
@@ -619,7 +704,6 @@ const renderFunnelChart = (ctx, data, chartConfig, w, h, pad) => {
     const y = pad.t + i * stageHeight
     const centerX = w / 2
 
-    // Draw trapezoid
     ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]
     ctx.beginPath()
     ctx.moveTo(centerX - topWidth / 2, y)
@@ -629,13 +713,11 @@ const renderFunnelChart = (ctx, data, chartConfig, w, h, pad) => {
     ctx.closePath()
     ctx.fill()
 
-    // Draw stage label
     ctx.fillStyle = '#fff'
     ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(String(stages[i]).substring(0, 20), centerX, y + stageHeight / 2)
 
-    // Draw value
     ctx.font = '9px sans-serif'
     ctx.fillText(formatValue(v), centerX, y + stageHeight / 2 + 15)
 

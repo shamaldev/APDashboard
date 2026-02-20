@@ -1,98 +1,142 @@
 /**
  * AuthLayout Component
- * Shared split-screen layout for authentication pages
+ * CrescentOne branded authentication layout — matches official login UI
  */
 
 import { motion } from 'framer-motion'
-import { Shield, Check } from 'lucide-react'
 
 const containerVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      duration: 0.4,
-      ease: "easeOut",
-    }
+    transition: { duration: 0.35, ease: 'easeOut' },
   },
 }
 
-const AuthLayout = ({
-  children,
-  headline,
-  highlightedText,
-  description,
-  features = [],
-}) => {
+const AuthLayout = ({ children }) => {
   return (
-    <div className="min-h-screen flex">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative overflow-hidden">
-        {/* Subtle gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-transparent to-indigo-600/20" />
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: '#D6DEDE' }}
+    >
+      {/* Global style for placeholder text — matches footer color */}
+      <style>{`
+        .cr-input::placeholder {
+          color: #7A9FA5;
+          opacity: 1;
+          font-style: italic;
+        }
+      `}</style>
 
-        {/* Grid pattern */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="h-full w-full" style={{
-            backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-            backgroundSize: '64px 64px'
-          }} />
+      {/* ── Top Navigation Bar ─────────────────────────────────── */}
+      <header
+        className="w-full px-6 py-2 flex items-center justify-between shrink-0"
+        style={{
+          backgroundColor: '#4A7C8A',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+        }}
+      >
+        {/* Logo on header — same approach as card logo */}
+        <img
+          src="/crescent-logo.jpg"
+          alt="CrescentOne"
+          style={{ height: 30, objectFit: 'contain', mixBlendMode: 'multiply' }}
+        />
+
+        {/* Culture / Language selectors */}
+        <div
+          className="flex items-center gap-5"
+          style={{ fontSize: 12, color: '#B8D8DD' }}
+        >
+          <span>
+            Culture:&nbsp;
+            <select
+              defaultValue="en-US"
+              style={{
+                fontSize: 12,
+                color: '#D0EEF2',
+                fontWeight: 500,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="en-US">English (United States)</option>
+            </select>
+          </span>
+          <span style={{ color: '#B8D8DD' }}>&#9660;</span>
+          <span>
+            Language:&nbsp;
+            <select
+              defaultValue="en"
+              style={{
+                fontSize: 12,
+                color: '#D0EEF2',
+                fontWeight: 500,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value="en">English</option>
+            </select>
+          </span>
         </div>
+      </header>
 
-        <div className="relative z-10 flex flex-col justify-center px-16 xl:px-24">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-              <Shield className="w-6 h-6 text-slate-900" />
-            </div>
-            <span className="text-2xl font-bold text-white tracking-tight">AP Dashboard</span>
-          </div>
-
-          <h1 className="text-4xl xl:text-5xl font-bold text-white leading-tight mb-6">
-            {headline}<br />
-            <span className="text-blue-400">{highlightedText}</span>
-          </h1>
-
-          <p className="text-slate-400 text-lg leading-relaxed max-w-md">
-            {description}
-          </p>
-
-          {/* Feature list */}
-          {features.length > 0 && (
-            <div className="mt-12 space-y-4">
-              {features.map((feature, i) => (
-                <div key={i} className="flex items-center gap-3 text-slate-300">
-                  <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
-                    <Check className="w-3 h-3 text-blue-400" />
-                  </div>
-                  <span>{feature}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-slate-50 px-6 py-12">
+      {/* ── Main Content ───────────────────────────────────────── */}
+      <main className="flex-1 flex items-center justify-center px-4 py-10 sm:py-14">
         <motion.div
-          className="w-full max-w-md"
+          className="w-full overflow-hidden"
+          style={{
+            maxWidth: 460,
+            backgroundColor: '#C4DADE',
+            border: '1px solid #B0CDD2',
+          }}
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">AP Dashboard</span>
+          {/* Card — Logo Section */}
+          <div
+            className="pt-10 pb-5 px-12 flex flex-col items-center"
+          >
+            <img
+              src="/crescent-logo.jpg"
+              alt="CrescentOne"
+              style={{ height: 68, objectFit: 'contain', maxWidth: '90%', mixBlendMode: 'multiply' }}
+            />
+            <p
+              className="mt-2 text-center font-semibold"
+              style={{
+                fontSize: 9,
+                color: '#7DAAAD',
+                letterSpacing: '0.22em',
+                textTransform: 'uppercase',
+              }}
+            >
+              ERP DRIVING INDUSTRY 4.0
+            </p>
           </div>
 
-          {children}
+          {/* Card — Form Content */}
+          <div className="px-12 pt-2 pb-6">{children}</div>
+
+          {/* Card — Footer */}
+          <div
+            className="px-12 py-3 flex items-center justify-between border-t"
+            style={{ borderColor: '#B0CDD2' }}
+          >
+            <span style={{ fontSize: 11, color: '#7A9FA5' }}>
+              CrescentOne GMIAP 2.6.214.2
+            </span>
+            <span style={{ fontSize: 11, color: '#7A9FA5' }}>Copyright</span>
+          </div>
         </motion.div>
-      </div>
+      </main>
     </div>
   )
 }

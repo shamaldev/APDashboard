@@ -23,10 +23,18 @@ const useChat = (userName) => {
   const [conversationId, setConversationId] = useState(null)
   const [isLoadingConversation, setIsLoadingConversation] = useState(false)
 
-  const handleKPICardChat = useCallback(async (question, card) => {
+  const handleKPICardChat = useCallback(async (question, card, forceNewConversation = false) => {
     if (!Cookies.get('access_token')) {
       handle401()
       return
+    }
+
+    // When forcing a new conversation (e.g. from KPI modal), reset state first
+    const effectiveConversationId = forceNewConversation ? null : conversationId
+    if (forceNewConversation) {
+      setConversationId(null)
+      const now = new Date()
+      setAgentMessages([{ text: getAIGreeting(userName, now.getHours(), now.getDay()), sender: 'ai' }])
     }
 
     setIsChatLoading(true)
@@ -52,13 +60,13 @@ const useChat = (userName) => {
     }
 
     try {
-      const res = await authFetch('/kpi-card-chat/chat-stream', {
+      const res = await authFetch('/conversational-bi/query-stream', {
         method: 'POST',
         headers: { 'Accept': 'text/event-stream' },
         body: JSON.stringify({
           query: question,
           card_context: cardContext,
-          conversation_id: conversationId,
+          conversation_id: effectiveConversationId,
           catalog: 'finance_fusion_catalog',
           schema: 'finance_fusion_catalog',
           persona: 'CFO'
@@ -88,15 +96,60 @@ const useChat = (userName) => {
             try {
               const data = JSON.parse(line.slice(6))
 
+              // Handle conversation creation
+              if (data.stage === 'conversation_created' && data.conversation_id) {
+                setConversationId(data.conversation_id)
+              }
+
               if (data.stage === 'analyzing') setStreamingText(data.message || 'Analyzing your question...')
+
+              // Handle classification
+              if (data.stage === 'classified') {
+                setStreamingText(data.message || `Classified as: ${data.query_type || 'analysis'}...`)
+              }
+
+              // Handle KPI-specific analysis stages
+              if (data.stage === 'kpi_analyzing') {
+                setStreamingText(data.message || 'Running KPI analysis...')
+              }
+
+              if (data.stage === 'kpi_intent_classified') {
+                intent = data.intent || intent
+                setStreamingText(data.message || `Intent: ${intent}...`)
+              }
+
               if (data.stage === 'intent_classified') {
                 intent = data.intent || ''
                 setStreamingText(data.message || `Understanding intent: ${intent}...`)
               }
+
+              // Handle follow-up detection stages
+              if (data.stage === 'followup_detection') {
+                setStreamingText(data.message || 'Checking conversation context...')
+              }
+              if (data.stage === 'followup_detected') {
+                setStreamingText(data.message || 'Follow-up question detected, analyzing...')
+                if (data.conversation_id) setConversationId(data.conversation_id)
+              }
+              if (data.stage === 'followup_analysis') {
+                setStreamingText(data.message || 'Analyzing follow-up context...')
+              }
+              if (data.stage === 'followup_partial') {
+                setStreamingText(data.message || 'Building on previous analysis...')
+              }
+
               if (data.stage === 'routing') setStreamingText(data.message || 'Routing query...')
               if (data.stage === 'routing_done') setStreamingText(data.message || 'Route identified...')
               if (data.stage === 'planning') setStreamingText(data.message || 'Planning analysis...')
-              if (data.stage === 'planning_done') setStreamingText(data.message || `Plan ready: ${data.query_count || ''} queries...`)
+              if (data.stage === 'planning_done') {
+                let planMsg = data.message || 'Plan ready'
+                if (data.query_count) planMsg += `: ${data.query_count} queries`
+                if (data.queries && Array.isArray(data.queries)) {
+                  const queryNames = data.queries.map(q => q.purpose || q.name).filter(Boolean)
+                  if (queryNames.length > 0) planMsg += '\n' + queryNames.map(n => `  \u2022 ${n}`).join('\n')
+                }
+                setStreamingText(planMsg)
+              }
               if (data.stage === 'synthesizing') setStreamingText(data.message || 'Synthesizing insights...')
 
               // Handle streamed query results (diagnostic queries)
@@ -108,7 +161,8 @@ const useChat = (userName) => {
                     chart_config: data.chart_config,
                     data: data.data,
                     sql_query: data.sql_query,
-                    query_id: data.query_id
+                    query_id: data.query_id,
+                    row_count: data.row_count || data.data?.length
                   })
                 }
                 setStreamingText(`Analysis ${data.progress || ''}% complete...`)
@@ -154,7 +208,8 @@ const useChat = (userName) => {
                           chart_config: qr.chart_config,
                           data: qr.data,
                           sql_query: qr.sql_query,
-                          query_id: qr.query_id
+                          query_id: qr.query_id,
+                          row_count: qr.row_count || qr.data?.length
                         }))
                     }
 
@@ -216,7 +271,7 @@ const useChat = (userName) => {
     } finally {
       setIsChatLoading(false)
     }
-  }, [conversationId])
+  }, [conversationId, userName])
 
   const handleGeneralChat = useCallback(async (question) => {
     if (!Cookies.get('access_token')) {
@@ -257,6 +312,7 @@ const useChat = (userName) => {
       let rootCauseAnalysis = null
       let queryIntent = null
       let overallConfidence = null
+      let diagnosticResult = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -278,7 +334,17 @@ const useChat = (userName) => {
 
               // Handle followup detection
               if (data.stage === 'followup_detection') {
-                setStreamingText('Checking conversation context...')
+                setStreamingText(data.message || 'Checking conversation context...')
+              }
+
+              // Handle followup detected with enriched query
+              if (data.stage === 'followup_detected') {
+                if (data.enriched_query) {
+                  setStreamingText(`Understanding follow-up: "${data.enriched_query.substring(0, 80)}..."`)
+                } else {
+                  setStreamingText(data.message || 'Follow-up detected...')
+                }
+                if (data.conversation_id) setConversationId(data.conversation_id)
               }
 
               // Handle classification
@@ -298,7 +364,28 @@ const useChat = (userName) => {
 
               // Handle planning (complex_why)
               if (data.stage === 'planning') {
-                setStreamingText('Designing analysis strategy...')
+                setStreamingText(data.message || 'Designing analysis strategy...')
+              }
+
+              // Handle planning done with query details
+              if (data.stage === 'planning_done') {
+                let planMsg = data.message || 'Analysis plan ready'
+                if (data.query_count) planMsg += `: ${data.query_count} sub-queries`
+                setStreamingText(planMsg)
+              }
+
+              // Handle KPI-specific stages in general chat
+              if (data.stage === 'kpi_analyzing') {
+                setStreamingText(data.message || 'Running KPI analysis...')
+              }
+              if (data.stage === 'kpi_intent_classified') {
+                setStreamingText(data.message || `Intent: ${data.intent || 'analyzing'}...`)
+              }
+              if (data.stage === 'followup_analysis') {
+                setStreamingText(data.message || 'Analyzing follow-up context...')
+              }
+              if (data.stage === 'followup_partial') {
+                setStreamingText(data.message || 'Building on previous analysis...')
               }
 
               // Handle SQL generation (simple)
@@ -322,14 +409,39 @@ const useChat = (userName) => {
                 setStreamingText('Analyzing results...')
               }
 
+              // Handle answer ready (simple queries)
+              if (data.stage === 'answer_ready') {
+                if (data.answer) fullAnswer = data.answer
+                setStreamingText(data.message || 'Answer ready...')
+              }
+
               // Handle synthesizing (complex_why)
               if (data.stage === 'synthesizing') {
-                setStreamingText('Synthesizing insights...')
+                setStreamingText(data.message || 'Synthesizing insights...')
+              }
+
+              // Handle streamed query results (diagnostic/complex queries)
+              if (data.stage === 'query_complete' && data.status === 'success') {
+                if (data.data && data.data.length > 0 && data.chart_config) {
+                  charts.push({
+                    title: data.chart_config?.title || data.purpose || 'Query Result',
+                    chart_type: data.chart_type || 'vertical_bar_chart',
+                    chart_config: data.chart_config,
+                    data: data.data,
+                    sql_query: data.sql_query,
+                    query_id: data.query_id,
+                    row_count: data.row_count || data.data?.length
+                  })
+                }
+                setStreamingText(data.message || `Analysis ${data.progress || ''}% complete...`)
               }
 
               // Handle chart ready (complex_why - streamed charts)
               if (data.stage === 'chart_ready' && data.chart) {
-                charts.push(data.chart)
+                charts.push({
+                  ...data.chart,
+                  row_count: data.chart.row_count || data.chart.data?.length
+                })
                 setStreamingText(`Analysis ${charts.length}/4 complete...`)
               }
 
@@ -362,7 +474,8 @@ const useChat = (userName) => {
                         title: result.chart_config?.title || 'Query Results',
                         chart_type: result.chart_type || 'horizontal_bar_chart',
                         chart_config: result.chart_config,
-                        data: result.data
+                        data: result.data,
+                        row_count: result.row_count || result.data?.length
                       }]
                     }
                     break
@@ -378,7 +491,10 @@ const useChat = (userName) => {
 
                     // Use charts from result if available (final set)
                     if (result.charts && result.charts.length > 0) {
-                      charts = result.charts
+                      charts = result.charts.map(c => ({
+                        ...c,
+                        row_count: c.row_count || c.data?.length
+                      }))
                     }
 
                     // Build the answer from executive summary and insights
@@ -417,6 +533,39 @@ const useChat = (userName) => {
                     followups = strategicRecommendations.map(r => r.action).filter(Boolean)
                     break
 
+                  case 'kpi_card_explain': {
+                    // KPI explanation from general chat — diagnostic-style result
+                    if (result.diagnostic_type || result.narrative) {
+                      diagnosticResult = result
+
+                      let narrativeBody = result.narrative || ''
+                      if (result.headline && narrativeBody.startsWith(result.headline)) {
+                        narrativeBody = narrativeBody.slice(result.headline.length).replace(/^\n+/, '')
+                      }
+                      fullAnswer = narrativeBody || result.headline || result.answer || ''
+                      followups = result.followups || result.suggested_followups || []
+
+                      // Build charts from query_results if not already captured from stream
+                      if (result.query_results && result.query_results.length > 0 && charts.length === 0) {
+                        charts = result.query_results
+                          .filter(qr => qr.status === 'success' && qr.data && qr.data.length > 0 && qr.chart_config)
+                          .map(qr => ({
+                            title: qr.chart_config?.title || qr.purpose || 'Result',
+                            chart_type: qr.chart_type || 'vertical_bar_chart',
+                            chart_config: qr.chart_config,
+                            data: qr.data,
+                            sql_query: qr.sql_query,
+                            query_id: qr.query_id,
+                            row_count: qr.row_count || qr.data?.length
+                          }))
+                      }
+                    } else {
+                      fullAnswer = result.answer || ''
+                      followups = result.suggested_followups || []
+                    }
+                    break
+                  }
+
                   default:
                     fullAnswer = result.answer || 'No response received'
                     followups = result.suggested_followups || []
@@ -439,6 +588,7 @@ const useChat = (userName) => {
         followups,
         charts: charts.length > 0 ? charts : undefined,
         queryType,
+        diagnosticResult,
         dataQualityAlert,
         sqlQuery,
         keyInsights: keyInsights.length > 0 ? keyInsights : undefined,
@@ -482,6 +632,21 @@ const useChat = (userName) => {
         }
         return String(f)
       })
+    }
+
+    // Normalize charts from the history API format to ChartCanvas format
+    const normalizeCharts = (charts) => {
+      if (!charts || !Array.isArray(charts)) return []
+      return charts
+        .filter(c => c.status === 'success' && c.data && c.data.length > 0)
+        .map(c => ({
+          title: c.chart_config?.title || c.title || 'Chart',
+          chart_type: c.chart_type || 'vertical_bar_chart',
+          chart_config: c.chart_config || {},
+          data: c.data,
+          sql_query: c.sql_query,
+          row_count: c.row_count || c.data?.length
+        }))
     }
 
     try {
@@ -531,9 +696,9 @@ const useChat = (userName) => {
               aiMessage.text = narrativeBody || diag.headline || ''
               aiMessage.followups = normalizeFollowups(diag.followups)
 
-              // Use query-level charts for diagnostics (multiple charts)
+              // Use normalized query-level charts for diagnostics
               if (query.charts && query.charts.length > 0) {
-                aiMessage.charts = query.charts
+                aiMessage.charts = normalizeCharts(query.charts)
               }
             } else if (query.simple_result) {
               const result = query.simple_result
@@ -541,35 +706,118 @@ const useChat = (userName) => {
               aiMessage.sqlQuery = result.sql_query
               aiMessage.followups = normalizeFollowups(result.suggested_followups)
 
-              // Add chart if data exists
+              // Add chart from simple_result if data exists
               if (result.data && result.data.length > 0 && result.chart_config) {
                 aiMessage.charts = [{
                   title: result.chart_config?.title || 'Query Results',
                   chart_type: result.chart_type || 'horizontal_bar_chart',
                   chart_config: result.chart_config,
                   data: result.data,
-                  row_count: result.row_count
+                  row_count: result.row_count || result.data?.length
                 }]
               }
 
-              // Also check query-level charts (may have more charts than simple_result)
-              if (query.charts && query.charts.length > 0 && (!aiMessage.charts || aiMessage.charts.length < query.charts.length)) {
-                aiMessage.charts = query.charts
+              // Prefer query-level charts if they have more data
+              const queryCharts = normalizeCharts(query.charts)
+              if (queryCharts.length > 0 && (!aiMessage.charts || queryCharts.length > aiMessage.charts.length)) {
+                aiMessage.charts = queryCharts
               }
             }
             break
 
+          case 'kpi_card_explain': {
+            // KPI explanation — diagnostic-style result (matches streaming handler)
+            if (query.diagnostic_result) {
+              const diag = query.diagnostic_result
+
+              let narrativeBody = diag.narrative || ''
+              if (diag.headline && narrativeBody.startsWith(diag.headline)) {
+                narrativeBody = narrativeBody.slice(diag.headline.length).replace(/^\n+/, '')
+              }
+
+              aiMessage.diagnosticResult = diag
+              aiMessage.text = narrativeBody || diag.headline || ''
+              aiMessage.followups = normalizeFollowups(diag.followups || diag.suggested_followups)
+
+              // Use query-level charts (preferred) or build from simple_result
+              const queryCharts = normalizeCharts(query.charts)
+              if (queryCharts.length > 0) {
+                aiMessage.charts = queryCharts
+              } else if (query.simple_result?.data?.length > 0 && query.simple_result?.chart_config) {
+                const sr = query.simple_result
+                aiMessage.charts = [{
+                  title: sr.chart_config?.title || 'Query Results',
+                  chart_type: sr.chart_type || 'vertical_bar_chart',
+                  chart_config: sr.chart_config,
+                  data: sr.data,
+                  row_count: sr.row_count || sr.data?.length
+                }]
+              }
+            } else if (query.simple_result) {
+              // Fallback to simple result format
+              const result = query.simple_result
+              aiMessage.text = result.answer || ''
+              aiMessage.sqlQuery = result.sql_query
+              aiMessage.followups = normalizeFollowups(result.suggested_followups)
+
+              if (result.data && result.data.length > 0 && result.chart_config) {
+                aiMessage.charts = [{
+                  title: result.chart_config?.title || 'Query Results',
+                  chart_type: result.chart_type || 'horizontal_bar_chart',
+                  chart_config: result.chart_config,
+                  data: result.data,
+                  row_count: result.row_count || result.data?.length
+                }]
+              }
+
+              const queryCharts = normalizeCharts(query.charts)
+              if (queryCharts.length > 0 && (!aiMessage.charts || queryCharts.length > aiMessage.charts.length)) {
+                aiMessage.charts = queryCharts
+              }
+            }
+            break
+          }
+
           case 'complex_why':
             if (query.complex_result) {
               const result = query.complex_result
-              aiMessage.text = result.executive_summary || ''
+
+              // Build full text matching the streaming handler format
+              let fullText = result.executive_summary || ''
+
+              // Add detailed findings as formatted key insights
+              const findings = result.detailed_findings || []
+              if (findings.length > 0) {
+                fullText += '\n\n**Key Insights:**\n'
+                fullText += findings.map((insight, i) => {
+                  let insightText = `${i + 1}. **${insight.headline}**`
+                  if (insight.supporting_evidence && insight.supporting_evidence.length > 0) {
+                    const ev = insight.supporting_evidence[0]
+                    if (ev.metric && ev.value) {
+                      insightText += `\n   - ${ev.metric}: ${ev.value}`
+                      if (ev.context) insightText += ` (${ev.context})`
+                    }
+                  }
+                  if (insight.business_impact) {
+                    insightText += `\n   - Impact: ${insight.business_impact}`
+                  }
+                  return insightText
+                }).join('\n')
+              }
+
+              // Add confidence score
+              if (result.confidence_score) {
+                fullText += `\n\n*Analysis Confidence: ${result.confidence_score}%*`
+              }
+
+              aiMessage.text = fullText
               aiMessage.overallConfidence = result.confidence_score
+              aiMessage.keyInsights = findings
               aiMessage.followups = normalizeFollowups(result.suggested_followups)
 
-              // Handle recommended_actions - can be strings or objects
+              // Handle recommended_actions → strategicRecommendations
               if (result.recommended_actions && result.recommended_actions.length > 0) {
                 aiMessage.strategicRecommendations = result.recommended_actions.map(action => {
-                  // If it's already an object with action property, use it
                   if (typeof action === 'object' && action !== null) {
                     return {
                       action: action.action || action.title || String(action),
@@ -578,25 +826,19 @@ const useChat = (userName) => {
                       expected_impact: action.expected_impact || action.impact || ''
                     }
                   }
-                  // If it's a string, wrap it
                   return { action: String(action) }
                 })
               }
-
-              // Add detailed findings as key insights
-              if (result.detailed_findings && result.detailed_findings.length > 0) {
-                aiMessage.keyInsights = result.detailed_findings
-              }
             }
 
-            // Add charts from query if available
+            // Normalize and add charts from query level
             if (query.charts && query.charts.length > 0) {
-              aiMessage.charts = query.charts
+              aiMessage.charts = normalizeCharts(query.charts)
             }
             break
 
           default:
-            // Fallback for unknown types - check diagnostic first
+            // Fallback for unknown types — check all result types
             if (query.diagnostic_result) {
               const diag = query.diagnostic_result
               let narrativeBody = diag.narrative || ''
@@ -607,14 +849,37 @@ const useChat = (userName) => {
               aiMessage.text = narrativeBody || diag.headline || ''
               aiMessage.followups = normalizeFollowups(diag.followups)
               if (query.charts && query.charts.length > 0) {
-                aiMessage.charts = query.charts
+                aiMessage.charts = normalizeCharts(query.charts)
+              }
+            } else if (query.complex_result) {
+              // Handle complex result in default case too
+              const result = query.complex_result
+              aiMessage.text = result.executive_summary || ''
+              aiMessage.overallConfidence = result.confidence_score
+              aiMessage.followups = normalizeFollowups(result.suggested_followups)
+              if (query.charts && query.charts.length > 0) {
+                aiMessage.charts = normalizeCharts(query.charts)
               }
             } else if (query.simple_result) {
-              aiMessage.text = query.simple_result.answer || ''
-              aiMessage.followups = normalizeFollowups(query.simple_result.suggested_followups)
+              const result = query.simple_result
+              aiMessage.text = result.answer || ''
+              aiMessage.sqlQuery = result.sql_query
+              aiMessage.followups = normalizeFollowups(result.suggested_followups)
+              if (result.data && result.data.length > 0 && result.chart_config) {
+                aiMessage.charts = [{
+                  title: result.chart_config?.title || 'Query Results',
+                  chart_type: result.chart_type || 'horizontal_bar_chart',
+                  chart_config: result.chart_config,
+                  data: result.data,
+                  row_count: result.row_count || result.data?.length
+                }]
+              }
             } else if (query.greeting_result) {
               aiMessage.text = query.greeting_result.answer || ''
               aiMessage.followups = normalizeFollowups(query.greeting_result.suggested_followups)
+            } else if (query.out_of_scope_result) {
+              aiMessage.text = query.out_of_scope_result.answer || ''
+              aiMessage.followups = normalizeFollowups(query.out_of_scope_result.suggested_followups)
             } else {
               aiMessage.text = 'No response available'
             }
@@ -641,6 +906,43 @@ const useChat = (userName) => {
     setActiveCard(null)
   }, [])
 
+  // Add chart query result directly to chat (no extra API call)
+  const addChartQueryResult = useCallback(({ question, answer, chartData, suggestedActions }) => {
+    const now = new Date()
+    const greeting = { text: getAIGreeting(userName, now.getHours(), now.getDay()), sender: 'ai' }
+    const userMsg = { text: question, sender: 'user' }
+
+    const aiMsg = {
+      text: answer,
+      sender: 'ai',
+      queryType: 'simple',
+      followups: suggestedActions || []
+    }
+
+    // Include chart visualization if chart data is available
+    if (chartData) {
+      const chartTitle = chartData.kpi?.title || chartData.title || 'Chart'
+      const chartType = chartData.kpi?.chart_type || chartData.chart_type
+      const chartConfig = chartData.chart_config || chartData.kpi?.chart_config
+      const data = chartData.data || []
+
+      if (data.length > 0 && chartConfig) {
+        aiMsg.charts = [{
+          title: chartTitle,
+          chart_type: chartType || 'vertical_bar_chart',
+          chart_config: chartConfig,
+          data,
+          sql_query: chartData.chart_sql || chartData.sql_query,
+          row_count: data.length
+        }]
+      }
+    }
+
+    setConversationId(null)
+    setActiveCard(null)
+    setAgentMessages([greeting, userMsg, aiMsg])
+  }, [userName])
+
   return {
     agentMessages,
     agentInput,
@@ -655,7 +957,8 @@ const useChat = (userName) => {
     handleGeneralChat,
     handleNewChat,
     loadConversation,
-    clearContext
+    clearContext,
+    addChartQueryResult
   }
 }
 
