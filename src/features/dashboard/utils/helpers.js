@@ -28,7 +28,22 @@ export const getKPIStatus = (card) => {
 
 export const getProactiveCardStatus = (card) => {
   const titleLower = card.title?.toLowerCase() || ''
-  const value = (card.value || 0) * 100
+  const rawValue = card.value || 0
+
+  // Cost per invoice: value is absolute currency, not a ratio
+  if (titleLower.includes('cost') && titleLower.includes('invoice')) {
+    return rawValue <= 100 ? 'green' : rawValue <= 115 ? 'amber' : 'red'
+  }
+
+  // E-invoice rate: handle both ratio (0-1) and percentage (0-100) forms
+  if (titleLower.includes('e-invoice') || titleLower.includes('einvoice')) {
+    const value = rawValue <= 1 ? rawValue * 100 : rawValue
+    if (value >= 90) return 'green'
+    if (value >= 80) return 'amber'
+    return 'red'
+  }
+
+  const value = rawValue * 100  // For ratio-based metrics
 
   if (titleLower.includes('stp') || titleLower.includes('straight')) {
     return value >= 70 ? 'green' : value >= 65 ? 'amber' : 'red'

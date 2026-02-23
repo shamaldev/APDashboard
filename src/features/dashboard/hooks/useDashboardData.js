@@ -85,12 +85,32 @@ const useDashboardData = () => {
                 if (data.result.proactive_agents?.agent_findings) {
                   setAlerts(data.result.proactive_agents.agent_findings)
                 }
-                setLoading(false)
               }
             } catch {}
           }
         }
       }
+
+      // Process any remaining data in buffer after stream ends
+      if (buffer.trim().startsWith('data: ')) {
+        try {
+          const data = JSON.parse(buffer.trim().slice(6))
+          if (data.status === 'card_ready' && data.card) {
+            setKpiCards(prev =>
+              prev.find(c => c.id === data.card.id)
+                ? prev.map(c => c.id === data.card.id ? data.card : c)
+                : [...prev, data.card]
+            )
+          }
+          if (data.status === 'alert_ready' && data.alert) {
+            setAlerts(prev => [...prev, data.alert])
+          }
+        } catch {}
+      }
+
+      // Stream finished — always stop loading
+      setLoading(false)
+      setProgress(100)
     } catch (e) {
       if (e.message !== 'Unauthorized') setError(e.message)
       setLoading(false)

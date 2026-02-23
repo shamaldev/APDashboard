@@ -52,6 +52,13 @@ const KPICard = ({ card, onClick }) => {
       <div className="text-[10px] text-slate-500 mt-2 truncate">
         {cleanComparisonLabel(card.comparison_label)}
       </div>
+
+      {/* Detail context */}
+      {card.detail_line_1 && (
+        <div className="text-[9px] text-slate-400 mt-1 truncate" title={card.detail_line_1}>
+          {card.detail_line_1}
+        </div>
+      )}
     </div>
   )
 }

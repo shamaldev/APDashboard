@@ -209,7 +209,11 @@ export default function DashboardPage() {
   const localCards = kpiCards.filter(c => c.card_type === 'local')
   const proactiveCards = kpiCards.filter(c => c.card_type === 'proactive')
   const cashFlowKpi = kpiResults.find(k => k.kpi?.title?.includes('Cash Outflow'))
-  const agingKpi = kpiResults.find(k => k.kpi?.title?.includes('Aging'))
+  const agingKpiFromResults = kpiResults.find(k => k.kpi?.title?.includes('Aging'))
+  const agingCardFromStream = kpiCards.find(c =>
+    c.id?.includes('aging') || c.title?.toLowerCase().includes('aging')
+  )
+  const agingData = agingKpiFromResults?.data || agingCardFromStream?.chart_data || null
 
   // Process alerts for Action Required Card (from alert_progress events)
   const actionItems = alerts.slice(0, 5).map((alert, idx) => {
@@ -347,7 +351,7 @@ export default function DashboardPage() {
               {/* Charts */}
               <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <CashFlowChart data={cashFlowKpi?.data} loading={loading} />
-                <AgingChart data={agingKpi?.data} />
+                <AgingChart data={agingData} />
               </section>
 
               {/* Insights Section - 3 Column Layout */}
