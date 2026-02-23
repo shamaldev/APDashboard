@@ -86,9 +86,9 @@ const ChatSidebar = ({
       <button
         onClick={onNewChat}
         className="flex items-center gap-2 px-3 py-2 text-white rounded text-xs font-semibold mb-3 transition-colors"
-        style={{ backgroundColor: '#2F5597' }}
-        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#243F7A')}
-        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#2F5597')}
+        style={{ backgroundColor: '#2B2570' }}
+        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1E1A5E')}
+        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#2B2570')}
       >
         <Plus size={14} />
         New Chat
@@ -131,7 +131,7 @@ const ChatSidebar = ({
                 }`}
                 style={
                   activeConversationId === conv.conversation_id
-                    ? { backgroundColor: '#1B5272' }
+                    ? { backgroundColor: '#2B2570' }
                     : {}
                 }
                 onClick={() => onSelectConversation?.(conv.conversation_id)}
@@ -139,7 +139,7 @@ const ChatSidebar = ({
                 <MessageSquare
                   size={12}
                   className="mt-0.5 shrink-0"
-                  style={{ color: activeConversationId === conv.conversation_id ? '#B0D4DC' : undefined }}
+                  style={{ color: activeConversationId === conv.conversation_id ? '#C0BDE8' : undefined }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="truncate font-medium text-[11px]">
@@ -147,7 +147,7 @@ const ChatSidebar = ({
                   </div>
                   <div
                     className="flex items-center gap-1 text-[9px]"
-                    style={{ color: activeConversationId === conv.conversation_id ? '#B0D4DC' : '#94A3B8' }}
+                    style={{ color: activeConversationId === conv.conversation_id ? '#C0BDE8' : '#94A3B8' }}
                   >
                     <span>{formatRelativeTime(conv.last_updated)}</span>
                     {conv.total_queries > 0 && (
@@ -197,7 +197,7 @@ const ChatSidebar = ({
                 onClick={onLoadMore}
                 disabled={isLoadingHistory}
                 className="text-[10px] py-1 text-center disabled:opacity-50 font-medium transition-colors"
-                style={{ color: '#1B5272' }}
+                style={{ color: '#2B2570' }}
               >
                 {isLoadingHistory ? (
                   <span className="flex items-center justify-center gap-1">
@@ -234,7 +234,7 @@ const ChatSidebar = ({
             <div className="text-xs font-medium text-slate-900 truncate">
               {activeCard.title}
             </div>
-            <div className="text-[10px] font-semibold" style={{ color: '#1B5272' }}>
+            <div className="text-[10px] font-semibold" style={{ color: '#2B2570' }}>
               {activeCard.formatted_value}
             </div>
           </div>

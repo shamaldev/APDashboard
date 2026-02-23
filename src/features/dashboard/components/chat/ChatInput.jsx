@@ -42,7 +42,7 @@ const ChatInput = ({
           <div className="text-[10px] text-slate-400 flex items-center gap-2">
             <MessageSquare size={10} />
             {activeCard ? (
-              <span>Context: <span style={{ color: '#1B5272' }} className="font-medium">{activeCard.title}</span></span>
+              <span>Context: <span style={{ color: '#2B2570' }} className="font-medium">{activeCard.title}</span></span>
             ) : (
               <span>General AP Query</span>
             )}
@@ -72,9 +72,9 @@ const ChatInput = ({
               onClick={onSend}
               disabled={isLoading || !value.trim()}
               className="text-white rounded px-3 py-1.5 disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium transition-colors"
-              style={{ backgroundColor: '#2F5597' }}
-              onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#243F7A' }}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2F5597' }}
+              style={{ backgroundColor: '#2B2570' }}
+              onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#1E1A5E' }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#2B2570' }}
             >
               <Send size={12} />
               Send

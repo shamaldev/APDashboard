@@ -222,9 +222,9 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion, onSimpleAnswer }) => {
                           key={i}
                           onClick={() => onAskQuestion(q, card)}
                           className="text-left text-sm px-4 py-2.5 rounded-xl transition-all hover:shadow-sm border"
-                          style={{ color: '#1B5272', backgroundColor: '#EDF7F9', borderColor: '#C8DEDE' }}
-                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#D7EBEE'; e.currentTarget.style.borderColor = '#7DAAAD' }}
-                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#EDF7F9'; e.currentTarget.style.borderColor = '#C8DEDE' }}
+                          style={{ color: '#2B2570', backgroundColor: '#EEEDF5', borderColor: '#D0CDE5' }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#EEEDF5'; e.currentTarget.style.borderColor = '#8B87B8' }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#EEEDF5'; e.currentTarget.style.borderColor = '#D0CDE5' }}
                         >
                           {q}
                         </button>
@@ -238,7 +238,7 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion, onSimpleAnswer }) => {
 
           {/* Footer Input */}
           <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80">
-            <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-[#7DAAAD] focus-within:ring-2 focus-within:ring-[#D7EBEE] transition-all">
+            <div className="flex gap-2 items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm focus-within:border-[#8B87B8] focus-within:ring-2 focus-within:ring-[#EEEDF5] transition-all">
               <input
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
@@ -250,9 +250,9 @@ const KPIModal = ({ isOpen, onClose, card, onAskQuestion, onSimpleAnswer }) => {
                 onClick={handleSend}
                 disabled={!question.trim()}
                 className="text-white rounded-lg p-2 disabled:bg-slate-200 disabled:text-slate-400 transition-colors shrink-0"
-                style={{ backgroundColor: '#2F5597' }}
-                onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#243F7A' }}
-                onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#2F5597' }}
+                style={{ backgroundColor: '#2B2570' }}
+                onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#1E1A5E' }}
+                onMouseLeave={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#2B2570' }}
               >
                 <Send size={14} />
               </button>

@@ -5,12 +5,12 @@
 
 import { Building2 } from 'lucide-react'
 
-/** Interpolate between two teal shades based on rank */
+/** Interpolate between Novigo indigo shades based on rank */
 const barColor = (idx, total) => {
   const ratio = total > 1 ? idx / (total - 1) : 0
-  const r = Math.round(0x1B + (0x7D - 0x1B) * ratio)
-  const g = Math.round(0x52 + (0xAA - 0x52) * ratio)
-  const b = Math.round(0x72 + (0xAD - 0x72) * ratio)
+  const r = Math.round(0x2B + (0x8B - 0x2B) * ratio)
+  const g = Math.round(0x25 + (0x87 - 0x25) * ratio)
+  const b = Math.round(0x70 + (0xB8 - 0x70) * ratio)
   return `rgb(${r},${g},${b})`
 }
 

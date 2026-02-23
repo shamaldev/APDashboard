@@ -9,6 +9,7 @@ import Cookies from 'js-cookie'
 import { jwtDecode } from 'jwt-decode'
 import { ROUTES } from '@shared/constants'
 import env from '@config/env'
+import novigoLogo from '../../../../NovigoLogo.png'
 
 const PrivateRoute = () => {
   const navigate = useNavigate()
@@ -74,11 +75,11 @@ const PrivateRoute = () => {
     return (
       <div
         className="min-h-screen flex flex-col items-center justify-center"
-        style={{ backgroundColor: '#D7EBEE' }}
+        style={{ backgroundColor: '#EEEDF5' }}
       >
         <img
-          src="/crescent-logo.jpg"
-          alt="CrescentOne"
+          src={novigoLogo}
+          alt="Novigo"
           style={{ height: 40, objectFit: 'contain', marginBottom: 24, mixBlendMode: 'multiply' }}
         />
         <div
@@ -86,11 +87,11 @@ const PrivateRoute = () => {
           style={{
             width: 36,
             height: 36,
-            border: '3px solid #B8D9DE',
-            borderTopColor: '#1B5272',
+            border: '3px solid #D0CDE5',
+            borderTopColor: '#2B2570',
           }}
         />
-        <p style={{ fontSize: 13, color: '#7DAAAD' }}>Verifying session...</p>
+        <p style={{ fontSize: 13, color: '#8B87B8' }}>Verifying session...</p>
       </div>
     )
   }

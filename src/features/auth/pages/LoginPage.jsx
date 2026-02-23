@@ -1,6 +1,6 @@
 /**
  * Login Page
- * CrescentOne branded login — User Identifier + Password
+ * Novigo branded login — User Identifier + Password
  */
 
 import { useState, useEffect } from 'react'
@@ -15,12 +15,12 @@ import { AuthLayout } from '../components'
 
 /* ─── Brand tokens ─────────────────────────────────────────────── */
 const BRAND = {
-  primary:     '#1B5272',
-  button:      '#2F5597',
-  buttonHover: '#243F7A',
-  border:      '#A8C4CA',
-  focusBorder: '#2F5597',
-  focusShadow: 'rgba(47,85,151,0.14)',
+  primary:     '#2B2570',
+  button:      '#2B2570',
+  buttonHover: '#1E1A5E',
+  border:      '#B8B4D8',
+  focusBorder: '#2B2570',
+  focusShadow: 'rgba(43,37,112,0.14)',
   inputBg:     '#FFFFFF',
 }
 
@@ -146,7 +146,7 @@ const LoginPage = ({ onLogin }) => {
             style={{
               width: '100%',
               padding: '8px 12px',
-              border: '1px solid #A8C4CA',
+              border: '1px solid #B8B4D8',
               borderRadius: 2,
               fontSize: 13,
               color: BRAND.primary,
@@ -171,7 +171,7 @@ const LoginPage = ({ onLogin }) => {
             style={{
               width: '100%',
               padding: '8px 36px 8px 12px',
-              border: '1px solid #A8C4CA',
+              border: '1px solid #B8B4D8',
               borderRadius: 2,
               fontSize: 13,
               color: BRAND.primary,
@@ -190,7 +190,7 @@ const LoginPage = ({ onLogin }) => {
               top: '50%', transform: 'translateY(-50%)',
               background: 'none', border: 'none',
               padding: 0, cursor: 'pointer',
-              color: '#A8C4CA', display: 'flex',
+              color: '#B8B4D8', display: 'flex',
             }}
             aria-label={showPass ? 'Hide password' : 'Show password'}
           >
@@ -204,7 +204,7 @@ const LoginPage = ({ onLogin }) => {
             to={ROUTES.FORGOT_PASSWORD}
             style={{
               fontSize: 13, fontWeight: 700,
-              color: '#1B3A4B', textDecoration: 'none',
+              color: '#1E1A5E', textDecoration: 'none',
             }}
             onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
             onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
@@ -218,7 +218,7 @@ const LoginPage = ({ onLogin }) => {
             onMouseEnter={() => setBtnHover(true)}
             onMouseLeave={() => setBtnHover(false)}
             style={{
-              backgroundColor: isLoading ? '#6B8FC4' : btnHover ? BRAND.buttonHover : BRAND.button,
+              backgroundColor: isLoading ? '#6E69A0' : btnHover ? BRAND.buttonHover : BRAND.button,
               color: '#ffffff',
               border: 'none',
               borderRadius: 3,

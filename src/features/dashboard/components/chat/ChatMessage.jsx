@@ -90,7 +90,7 @@ const ChatMessage = ({
         className={`px-4 py-3 rounded-2xl text-sm ${
           isUser ? 'text-white rounded-br-sm' : 'bg-slate-100 text-slate-900 rounded-bl-sm'
         }`}
-        style={isUser ? { backgroundColor: '#2F5597' } : {}}
+        style={isUser ? { backgroundColor: '#2B2570' } : {}}
       >
         {/* Query type badge for AI messages */}
         {!isUser && message.queryType && message.queryType !== 'simple' && (
@@ -173,7 +173,7 @@ const ChatMessage = ({
                         <div className="shrink-0">
                           <div
                             className="w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                            style={{ backgroundColor: rc.classification === 'Strategic' ? '#2F5597' : '#7DAAAD' }}
+                            style={{ backgroundColor: rc.classification === 'Strategic' ? '#2B2570' : '#8B87B8' }}
                           >
                             {rc.percentage}%
                           </div>
@@ -183,7 +183,7 @@ const ChatMessage = ({
                           <div className="text-[10px] text-slate-500">{rc.description}</div>
                           {rc.amount && <div className="text-[10px] font-medium text-slate-600 mt-0.5">{rc.amount}</div>}
                         </div>
-                        <TrendingUp size={14} style={{ color: rc.classification === 'Strategic' ? '#6B8FC4' : '#7DAAAD' }} />
+                        <TrendingUp size={14} style={{ color: rc.classification === 'Strategic' ? '#6E69A0' : '#8B87B8' }} />
                       </div>
                     ))}
                   </div>
@@ -218,7 +218,7 @@ const ChatMessage = ({
               className="flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors"
               style={
                 isThisMessageSpeaking
-                  ? { backgroundColor: '#D7EBEE', color: '#1B5272' }
+                  ? { backgroundColor: '#EEEDF5', color: '#2B2570' }
                   : { backgroundColor: '#E2E8F0', color: '#475569' }
               }
               title={isThisMessageSpeaking ? (isPaused ? 'Resume' : 'Pause') : 'Read aloud'}
@@ -412,9 +412,9 @@ const ChatMessage = ({
                   onClick={() => handleFollowUp(f)}
                   disabled={isChatLoading}
                   className="text-[10px] px-2 py-1 rounded disabled:opacity-50 text-left transition-colors"
-                  style={{ color: '#1B5272', backgroundColor: '#EDF7F9' }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#D7EBEE')}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#EDF7F9')}
+                  style={{ color: '#2B2570', backgroundColor: '#EEEDF5' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EEEDF5')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#EEEDF5')}
                 >
                   {f.length > 50 ? f.substring(0, 50) + '...' : f}
                 </button>

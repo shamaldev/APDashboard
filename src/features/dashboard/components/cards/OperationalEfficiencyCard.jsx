@@ -95,9 +95,9 @@ const OperationalEfficiencyCard = ({ metrics = {} }) => {
                 const height = maxVal > 0 ? (val / maxVal) * 100 : 0
                 const total = monthlyVolumeTrend.length
                 const ratio = total > 1 ? idx / (total - 1) : 1
-                const r = Math.round(0xC8 + (0x1B - 0xC8) * ratio)
-                const g = Math.round(0xDE + (0x52 - 0xDE) * ratio)
-                const b = Math.round(0xDE + (0x72 - 0xDE) * ratio)
+                const r = Math.round(0xD8 + (0x2B - 0xD8) * ratio)
+                const g = Math.round(0xD5 + (0x25 - 0xD5) * ratio)
+                const b = Math.round(0xEC + (0x70 - 0xEC) * ratio)
                 const barBg = `rgb(${r},${g},${b})`
 
                 return (

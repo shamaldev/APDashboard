@@ -1,17 +1,18 @@
 /**
  * DashboardHeader Component
- * CrescentOne branded top header — logo, live indicator, view toggle, actions
+ * Novigo branded top header — logo, live indicator, view toggle, actions
  */
 
 import { RefreshCw, LogOut } from 'lucide-react'
+import novigoLogo from '../../../../../NovigoLogo.png'
 
 /* ─── Brand tokens ─────────────────────────────────────────────── */
 const CO = {
-  primary:    '#1B5272',
-  secondary:  '#7DAAAD',
-  activeBg:   '#1B5272',
-  toggleBg:   '#E4F0F3',
-  border:     '#D0E8EC',
+  primary:    '#2B2570',
+  secondary:  '#8B87B8',
+  activeBg:   '#2B2570',
+  toggleBg:   '#F0EFF7',
+  border:     '#D8D5EC',
 }
 
 const DashboardHeader = ({
@@ -30,10 +31,10 @@ const DashboardHeader = ({
     >
       {/* ── Left: Logo + Title ──────────────────────────────────── */}
       <div className="flex items-center gap-4 min-w-0">
-        {/* Real CrescentOne logo image */}
+        {/* Novigo logo */}
         <img
-          src="/crescent-logo.jpg"
-          alt="CrescentOne"
+          src={novigoLogo}
+          alt="Novigo"
           style={{ height: 36, objectFit: 'contain', flexShrink: 0, mixBlendMode: 'multiply' }}
         />
 
@@ -85,7 +86,7 @@ const DashboardHeader = ({
           style={{
             fontFamily: 'monospace',
             fontSize: 11,
-            color: '#6B9BAA',
+            color: '#7E7AB0',
           }}
         >
           {date} · {time}
@@ -118,7 +119,7 @@ const DashboardHeader = ({
             onClick={onRefresh}
             title="Refresh data"
             className="flex items-center gap-1 px-2.5 py-1.5 rounded bg-white text-xs font-medium transition-colors hover:bg-slate-50"
-            style={{ border: `1px solid ${CO.border}`, color: '#6B9BAA' }}
+            style={{ border: `1px solid ${CO.border}`, color: '#7E7AB0' }}
           >
             <RefreshCw size={12} />
           </button>
