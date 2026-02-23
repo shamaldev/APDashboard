@@ -62,13 +62,13 @@ const ProactiveCard = ({ card, onClick }) => {
   return (
     <div
       onClick={() => onClick && onClick(card)}
-      className={`bg-gradient-to-br ${colors.gradient} border ${colors.border} rounded-lg p-4 transition-all duration-200 hover:shadow-md relative overflow-hidden ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
+      className={`bg-gradient-to-br ${colors.gradient} border ${colors.border} rounded-lg p-4 transition-all duration-200 hover:shadow-md relative overflow-hidden flex flex-col ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
     >
       {/* Status indicator bar */}
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${colors.indicator}`} />
 
       {/* Header */}
-      <div className="flex justify-between items-start mb-2 gap-2">
+      <div className="flex justify-between items-start mb-2 gap-2 min-h-[44px]">
         <div className={`w-8 h-8 rounded flex items-center justify-center flex-shrink-0 ${colors.badge}`}>
           <Icon size={14} />
         </div>

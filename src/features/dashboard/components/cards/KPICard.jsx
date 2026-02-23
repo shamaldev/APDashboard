@@ -20,25 +20,25 @@ const KPICard = ({ card, onClick }) => {
   return (
     <div
       onClick={() => onClick(card)}
-      className={`bg-gradient-to-br ${colors.gradient} border ${colors.border} rounded-xl p-5 relative overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:-translate-y-0.5`}
+      className={`bg-gradient-to-br ${colors.gradient} border ${colors.border} rounded-xl p-5 relative overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 flex flex-col`}
     >
       {/* Status indicator bar */}
       <div className={`absolute top-0 left-0 right-0 h-1 ${colors.indicator}`} />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-start justify-between mb-3 min-h-[28px]">
         <div className="flex items-center gap-2 text-[10px] font-semibold tracking-wider uppercase text-slate-500">
-          <CreditCard size={12} />
-          <span className="truncate">{card.title}</span>
+          <CreditCard size={12} className="shrink-0" />
+          <span>{card.title}</span>
         </div>
         <div
-          className={`w-2.5 h-2.5 rounded-full ${colors.indicator}`}
+          className={`w-2.5 h-2.5 rounded-full shrink-0 ${colors.indicator}`}
           title={`Status: ${kpiStatus}`}
         />
       </div>
 
       {/* Value */}
-      <div className={`font-serif font-semibold tracking-tight leading-tight mb-2 ${isPrimary ? 'text-3xl' : 'text-2xl'} ${colors.text}`}>
+      <div className={`font-semibold tracking-tight leading-tight mb-2 text-2xl ${colors.text}`}>
         {card.formatted_value}
       </div>
 
