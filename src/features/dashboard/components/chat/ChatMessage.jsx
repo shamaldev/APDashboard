@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { AlertTriangle, Database, ChevronDown, ChevronUp, Volume2, VolumeX, Pause, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
+import { AlertTriangle, Database, ChevronDown, ChevronUp, Volume2, VolumeX, Pause, TrendingUp } from 'lucide-react'
 import { ChartCanvas } from '../charts'
 import AIChartQueryModal from '../modals/AIChartQueryModal'
 
@@ -60,22 +60,131 @@ const ChatMessage = ({
     }
   }
 
-  // Format text with markdown-like bold syntax
+  // Format inline text: **bold** and *italic*
   const formatText = (text) => {
     if (!text) return null
-
-    // Split by **text** pattern for bold
     const parts = text.split(/(\*\*[^*]+\*\*)/g)
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i}>{part.slice(2, -2)}</strong>
+        return <strong key={i} className="font-semibold text-slate-800">{part.slice(2, -2)}</strong>
       }
-      // Handle italic with single *
       if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
         return <em key={i} className="text-slate-500">{part.slice(1, -1)}</em>
       }
       return part
     })
+  }
+
+  // Parse markdown-like narrative into styled React blocks
+  const renderNarrative = (text) => {
+    if (!text) return null
+
+    const lines = text.split('\n')
+    const blocks = []
+    let current = null
+
+    const flush = () => {
+      if (current && current.items.length > 0) blocks.push(current)
+      current = null
+    }
+
+    lines.forEach((line) => {
+      const trimmed = line.trim()
+
+      if (!trimmed) { flush(); return }
+
+      // ### Section header
+      if (trimmed.startsWith('### ')) {
+        flush()
+        blocks.push({ type: 'heading', text: trimmed.slice(4) })
+        return
+      }
+
+      // Nested bullet (2+ spaces before -)
+      if (/^\s{2,}-\s/.test(line)) {
+        if (!current || current.type !== 'list') { flush(); current = { type: 'list', items: [] } }
+        current.items.push({ text: trimmed.slice(2), nested: true })
+        return
+      }
+
+      // Top-level bullet
+      if (trimmed.startsWith('- ')) {
+        if (!current || current.type !== 'list') { flush(); current = { type: 'list', items: [] } }
+        current.items.push({ text: trimmed.slice(2), nested: false })
+        return
+      }
+
+      // Numbered list (1. text)
+      const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/)
+      if (numMatch) {
+        if (!current || current.type !== 'numbered') { flush(); current = { type: 'numbered', items: [] } }
+        current.items.push({ num: numMatch[1], text: numMatch[2] })
+        return
+      }
+
+      // Regular paragraph
+      if (!current || current.type !== 'paragraph') { flush(); current = { type: 'paragraph', items: [] } }
+      current.items.push(trimmed)
+    })
+
+    flush()
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {blocks.map((block, idx) => {
+          switch (block.type) {
+            case 'heading':
+              return (
+                <div key={idx}>
+                  {idx > 0 && <div style={{ borderTop: '1px solid #e2e8f0', marginBottom: '12px' }} />}
+                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#1e293b', lineHeight: 1.4, margin: 0 }}>
+                    {formatText(block.text)}
+                  </h4>
+                </div>
+              )
+            case 'list':
+              return (
+                <ul key={idx} style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {block.items.map((item, i) => (
+                    <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginLeft: item.nested ? '20px' : '0' }}>
+                      <span style={{
+                        marginTop: '7px', width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0,
+                        backgroundColor: item.nested ? '#cbd5e1' : '#94a3b8'
+                      }} />
+                      <span style={{ fontSize: '13px', color: '#475569', lineHeight: 1.7 }}>
+                        {formatText(item.text)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            case 'numbered':
+              return (
+                <ol key={idx} style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {block.items.map((item, i) => (
+                    <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginTop: '1px', flexShrink: 0, width: '16px', textAlign: 'right' }}>
+                        {item.num}.
+                      </span>
+                      <span style={{ fontSize: '13px', color: '#475569', lineHeight: 1.7 }}>
+                        {formatText(item.text)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )
+            case 'paragraph':
+              return (
+                <p key={idx} style={{ fontSize: '13px', color: '#475569', lineHeight: 1.7, margin: 0 }}>
+                  {formatText(block.items.join(' '))}
+                </p>
+              )
+            default:
+              return null
+          }
+        })}
+      </div>
+    )
   }
 
   return (
@@ -114,22 +223,51 @@ const ChatMessage = ({
         {!isUser && message.diagnosticResult ? (() => {
           const diag = message.diagnosticResult
           const assessmentStyles = {
-            critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', icon: <AlertCircle size={14} />, label: 'Critical' },
-            warning: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: <AlertTriangle size={14} />, label: 'Warning' },
-            ok: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: <CheckCircle size={14} />, label: 'Healthy' },
-            info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', icon: <AlertCircle size={14} />, label: 'Info' }
+            critical: { label: 'Critical', pill: 'bg-red-100 text-red-700', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700' },
+            warning: { label: 'Warning', pill: 'bg-amber-100 text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' },
+            ok: { label: 'Healthy', pill: 'bg-emerald-100 text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' },
+            info: { label: 'Info', pill: 'bg-blue-100 text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' }
           }
           const style = assessmentStyles[diag.assessment] || assessmentStyles.warning
+
+          // Fix truncated headlines: if headline doesn't end at a natural sentence boundary,
+          // reconstruct from the full narrative to avoid mid-word splits
+          let displayHeadline = diag.headline || ''
+          let displayBody = message.text || ''
+          const headlineEndsClean = !displayHeadline || /[.!?:;)\]—"]$/.test(displayHeadline.trim())
+
+          if (!headlineEndsClean && (diag.narrative || displayBody)) {
+            const fullNarrative = diag.narrative || (displayHeadline + displayBody)
+            const paraBreak = fullNarrative.indexOf('\n\n')
+            if (paraBreak > 0) {
+              displayHeadline = fullNarrative.slice(0, paraBreak)
+              displayBody = fullNarrative.slice(paraBreak + 2)
+            } else {
+              displayHeadline = fullNarrative
+              displayBody = ''
+            }
+          }
+
           return (
-            <div className="space-y-3">
-              {/* Headline */}
-              <div className="text-[13px] font-bold text-slate-900 leading-snug">
-                {diag.headline}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Headline + Assessment pill (top-right) */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ fontSize: '16px', fontWeight: 500, color: '#0f172a', lineHeight: 1.45, letterSpacing: '-0.01em', flex: 1 }}>
+                  {formatText(displayHeadline)}
+                </div>
+                {diag.assessment && (
+                  <span
+                    className={`${style.pill}`}
+                    style={{ flexShrink: 0, fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: '9999px', marginTop: '2px', letterSpacing: '0.05em' }}
+                  >
+                    {style.label}
+                  </span>
+                )}
               </div>
 
               {/* Follow-up reuse indicator */}
               {diag.diagnostic_type === 'followup_partial' && diag.metadata?.reuse_type && (
-                <div className="text-[9px] text-slate-400 mt-0.5">
+                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '-12px' }}>
                   {diag.metadata.reused_charts > 0
                     ? `Building on ${diag.metadata.reused_charts} previous chart(s)`
                     : 'Follow-up analysis'}
@@ -137,50 +275,52 @@ const ChatMessage = ({
                 </div>
               )}
 
-              {/* Assessment badge */}
-              <div className={`p-2.5 rounded-lg border ${style.bg} ${style.border}`}>
-                <span className={`text-[10px] font-bold uppercase ${style.text}`}>{style.label}</span>
-                <div className="text-[11px] text-slate-700 mt-0.5 leading-relaxed">{diag.assessment_text}</div>
-              </div>
+              {/* Assessment text (only if non-empty) */}
+              {diag.assessment_text && (
+                <div className={`${style.bg} ${style.border}`} style={{ padding: '12px', borderRadius: '8px', borderWidth: '1px', borderStyle: 'solid' }}>
+                  <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>{diag.assessment_text}</div>
+                </div>
+              )}
 
               {/* Key Metrics */}
               {diag.key_metrics && diag.key_metrics.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                   {diag.key_metrics.map((m, i) => (
-                    <div key={i} className="bg-white rounded-lg p-2 border border-slate-200 text-center">
-                      <div className="text-[9px] text-slate-500 uppercase font-medium">{m.label}</div>
-                      <div className="text-[13px] font-bold text-slate-900 mt-0.5">{m.value}</div>
+                    <div key={i} style={{ backgroundColor: '#fff', borderRadius: '10px', padding: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                      <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', fontWeight: 500, letterSpacing: '0.05em' }}>{m.label}</div>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>{m.value}</div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Narrative body */}
-              <div className="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap">
-                {message.text}
-              </div>
+              {/* Narrative body — rendered with proper markdown formatting */}
+              {renderNarrative(displayBody)}
 
               {/* Root Causes */}
               {diag.root_causes && diag.root_causes.length > 0 && (
-                <div>
-                  <div className="text-[10px] font-semibold uppercase text-slate-500 mb-1.5">Root Causes</div>
-                  <div className="space-y-1.5">
+                <div style={{ paddingTop: '4px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: '#64748b', marginBottom: '10px', letterSpacing: '0.05em' }}>Root Causes</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {diag.root_causes.map((rc, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-slate-200">
-                        <div className="shrink-0">
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#fff', borderRadius: '10px', padding: '12px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ flexShrink: 0 }}>
                           <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                            style={{ backgroundColor: rc.classification === 'Strategic' ? '#2F5597' : '#7DAAAD' }}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '11px', fontWeight: 700, color: '#fff',
+                              backgroundColor: rc.classification === 'Strategic' ? '#2F5597' : '#7DAAAD'
+                            }}
                           >
                             {rc.percentage}%
                           </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[11px] font-semibold text-slate-800">{rc.category}</div>
-                          <div className="text-[10px] text-slate-500">{rc.description}</div>
-                          {rc.amount && <div className="text-[10px] font-medium text-slate-600 mt-0.5">{rc.amount}</div>}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{rc.category}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{rc.description}</div>
+                          {rc.amount && <div style={{ fontSize: '12px', fontWeight: 500, color: '#475569', marginTop: '2px' }}>{rc.amount}</div>}
                         </div>
-                        <TrendingUp size={14} style={{ color: rc.classification === 'Strategic' ? '#6B8FC4' : '#7DAAAD' }} />
+                        <TrendingUp size={14} style={{ flexShrink: 0, color: rc.classification === 'Strategic' ? '#6B8FC4' : '#7DAAAD' }} />
                       </div>
                     ))}
                   </div>
@@ -190,15 +330,15 @@ const ChatMessage = ({
           )
         })() : (
           <>
-            {/* Message text — split first paragraph as summary for AI simple results */}
+            {/* Message text — split first paragraph as summary, render rest with markdown support */}
             {!isUser && message.text && message.text.includes('\n\n') ? (() => {
               const firstBreak = message.text.indexOf('\n\n')
               const summary = message.text.slice(0, firstBreak)
               const rest = message.text.slice(firstBreak + 2)
               return (
-                <div className="space-y-2">
-                  <div className="text-[12.5px] font-semibold text-slate-900 leading-snug">{formatText(summary)}</div>
-                  {rest && <div className="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap">{formatText(rest)}</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#0f172a', lineHeight: 1.45 }}>{formatText(summary)}</div>
+                  {rest && renderNarrative(rest)}
                 </div>
               )
             })() : (
@@ -315,14 +455,14 @@ const ChatMessage = ({
 
         {/* Charts */}
         {charts && charts.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-slate-200">
-            <div className="text-[10px] font-semibold uppercase text-slate-500 mb-2">
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: '#94a3b8', marginBottom: '12px', letterSpacing: '0.05em' }}>
               {message.queryType === 'complex_why' ? `Analysis (${charts.length} charts)` : 'Visualization'}
             </div>
             <div className={`grid gap-3 ${charts.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
               {charts.map((chart, idx) => (
-                <div key={idx} className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm">
-                  <div className="text-[11px] font-semibold text-slate-800 mb-2 leading-tight">
+                <div key={idx} style={{ backgroundColor: '#fff', borderRadius: '10px', padding: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b', marginBottom: '10px', lineHeight: 1.4 }}>
                     {chart.chart_config?.title || chart.title}
                   </div>
                   {chart.data && chart.data.length > 0 ? (
@@ -361,8 +501,8 @@ const ChatMessage = ({
 
         {/* Strategic Recommendations (for complex_why) */}
         {message.strategicRecommendations && message.strategicRecommendations.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-slate-200">
-            <div className="text-[10px] font-semibold uppercase text-slate-500 mb-2">
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: '#94a3b8', marginBottom: '10px', letterSpacing: '0.05em' }}>
               Strategic Recommendations
             </div>
             <div className="space-y-2">
@@ -396,8 +536,8 @@ const ChatMessage = ({
 
         {/* Follow-up questions/suggestions */}
         {message.followups && message.followups.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-slate-200">
-            <div className="text-[10px] text-slate-500 mb-1.5">
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '8px' }}>
               {message.queryType === 'complex_why' ? 'Next Steps:' :
                message.queryType === 'out_of_scope' ? 'Try asking:' :
                'Suggested questions:'}

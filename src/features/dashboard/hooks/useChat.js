@@ -638,14 +638,31 @@ const useChat = (userName) => {
     const normalizeCharts = (charts) => {
       if (!charts || !Array.isArray(charts)) return []
       return charts
-        .filter(c => c.status === 'success' && c.data && c.data.length > 0)
+        .filter(c => c.data && c.data.length > 0 && (!c.status || c.status === 'success') && c.chart_config)
         .map(c => ({
-          title: c.chart_config?.title || c.title || 'Chart',
+          title: c.chart_config?.title || c.title || c.purpose || 'Chart',
           chart_type: c.chart_type || 'vertical_bar_chart',
           chart_config: c.chart_config || {},
           data: c.data,
           sql_query: c.sql_query,
+          query_id: c.query_id,
           row_count: c.row_count || c.data?.length
+        }))
+    }
+
+    // Build charts from diagnostic query_results (matches live streaming format)
+    const chartsFromQueryResults = (queryResults) => {
+      if (!queryResults || !Array.isArray(queryResults)) return []
+      return queryResults
+        .filter(qr => qr.data && qr.data.length > 0 && qr.chart_config)
+        .map(qr => ({
+          title: qr.chart_config?.title || qr.purpose || 'Result',
+          chart_type: qr.chart_type || 'vertical_bar_chart',
+          chart_config: qr.chart_config,
+          data: qr.data,
+          sql_query: qr.sql_query,
+          query_id: qr.query_id,
+          row_count: qr.row_count || qr.data?.length
         }))
     }
 
@@ -696,9 +713,13 @@ const useChat = (userName) => {
               aiMessage.text = narrativeBody || diag.headline || ''
               aiMessage.followups = normalizeFollowups(diag.followups)
 
-              // Use normalized query-level charts for diagnostics
-              if (query.charts && query.charts.length > 0) {
-                aiMessage.charts = normalizeCharts(query.charts)
+              // Use query-level charts, or build from diagnostic query_results as fallback
+              const simDiagCharts = normalizeCharts(query.charts)
+              if (simDiagCharts.length > 0) {
+                aiMessage.charts = simDiagCharts
+              } else {
+                const fromQR = chartsFromQueryResults(diag.query_results)
+                if (fromQR.length > 0) aiMessage.charts = fromQR
               }
             } else if (query.simple_result) {
               const result = query.simple_result
@@ -739,19 +760,24 @@ const useChat = (userName) => {
               aiMessage.text = narrativeBody || diag.headline || ''
               aiMessage.followups = normalizeFollowups(diag.followups || diag.suggested_followups)
 
-              // Use query-level charts (preferred) or build from simple_result
+              // Use query-level charts, then diagnostic query_results, then simple_result
               const queryCharts = normalizeCharts(query.charts)
               if (queryCharts.length > 0) {
                 aiMessage.charts = queryCharts
-              } else if (query.simple_result?.data?.length > 0 && query.simple_result?.chart_config) {
-                const sr = query.simple_result
-                aiMessage.charts = [{
-                  title: sr.chart_config?.title || 'Query Results',
-                  chart_type: sr.chart_type || 'vertical_bar_chart',
-                  chart_config: sr.chart_config,
-                  data: sr.data,
-                  row_count: sr.row_count || sr.data?.length
-                }]
+              } else {
+                const fromQR = chartsFromQueryResults(diag.query_results)
+                if (fromQR.length > 0) {
+                  aiMessage.charts = fromQR
+                } else if (query.simple_result?.data?.length > 0 && query.simple_result?.chart_config) {
+                  const sr = query.simple_result
+                  aiMessage.charts = [{
+                    title: sr.chart_config?.title || 'Query Results',
+                    chart_type: sr.chart_type || 'vertical_bar_chart',
+                    chart_config: sr.chart_config,
+                    data: sr.data,
+                    row_count: sr.row_count || sr.data?.length
+                  }]
+                }
               }
             } else if (query.simple_result) {
               // Fallback to simple result format
@@ -848,8 +874,12 @@ const useChat = (userName) => {
               aiMessage.diagnosticResult = diag
               aiMessage.text = narrativeBody || diag.headline || ''
               aiMessage.followups = normalizeFollowups(diag.followups)
-              if (query.charts && query.charts.length > 0) {
-                aiMessage.charts = normalizeCharts(query.charts)
+              const defDiagCharts = normalizeCharts(query.charts)
+              if (defDiagCharts.length > 0) {
+                aiMessage.charts = defDiagCharts
+              } else {
+                const fromQR = chartsFromQueryResults(diag.query_results)
+                if (fromQR.length > 0) aiMessage.charts = fromQR
               }
             } else if (query.complex_result) {
               // Handle complex result in default case too
