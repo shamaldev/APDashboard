@@ -630,36 +630,100 @@ const renderPieChart = (ctx, data, chartConfig, w, h) => {
 }
 
 const renderClusteredBarChart = (ctx, data, chartConfig, w, h, pad) => {
+  // Handle y_axis_col_name as array (same as vertical/horizontal bar charts)
+  const yColRaw = chartConfig?.y_axis_col_name
+  const yColResolved = Array.isArray(yColRaw) ? yColRaw[0] : yColRaw
+
   const xCol = chartConfig?.x_axis_col_name || Object.keys(data[0])[0]
-  const yCol = chartConfig?.y_axis_col_name || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
-  const clusterCol = chartConfig?.cluster_by || 'cluster'
+  const clusterCol = chartConfig?.cluster_by || null
+
+  // Determine value and category columns based on data types
+  let valueCol, categoryCol
+
+  if (clusterCol) {
+    // When cluster_by is explicitly provided, use standard mapping
+    categoryCol = xCol
+    valueCol = yColResolved || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
+  } else {
+    // No cluster_by: auto-detect roles from the config
+    // x_axis_col_name is typically the value column, y_axis_col_name is the label/category
+    const xIsNumeric = data.some(d => !isNaN(Number(d[xCol])) && Number(d[xCol]) !== 0)
+    const yIsNumeric = yColResolved && data.some(d => !isNaN(Number(d[yColResolved])) && Number(d[yColResolved]) !== 0)
+
+    if (xIsNumeric && !yIsNumeric && yColResolved) {
+      // x has numbers, y has strings → x is value, y is category (like horizontal bar)
+      valueCol = xCol
+      categoryCol = yColResolved
+    } else {
+      // Default: x is category, y is value
+      categoryCol = xCol
+      valueCol = yColResolved || Object.keys(data[0]).find(k => typeof data[0][k] === 'number')
+    }
+  }
+
+  // Fallback: if valueCol still produces all zeros, find a real numeric column
+  if (valueCol) {
+    const testValues = data.map(d => Number(d[valueCol]) || 0)
+    if (testValues.every(v => v === 0)) {
+      const numericCols = Object.keys(data[0]).filter(k =>
+        k !== categoryCol && data.some(d => d[k] !== null && d[k] !== undefined && !isNaN(Number(d[k])) && Number(d[k]) !== 0)
+      )
+      if (numericCols.length > 0) valueCol = numericCols[0]
+    }
+  }
+
+  // Determine effective cluster column
+  const effectiveClusterCol = clusterCol || Object.keys(data[0]).find(k =>
+    k !== valueCol && k !== categoryCol && typeof data[0][k] === 'string'
+  ) || null
 
   const grouped = {}
   data.forEach(d => {
-    const category = d[xCol] || 'Unknown'
-    const cluster = d[clusterCol] || 'Default'
+    const category = d[categoryCol] || 'Unknown'
+    const cluster = effectiveClusterCol ? (d[effectiveClusterCol] || 'Default') : 'Default'
     if (!grouped[category]) grouped[category] = {}
-    grouped[category][cluster] = Number(d[yCol]) || 0
+    grouped[category][cluster] = Number(d[valueCol]) || 0
   })
 
   const categories = Object.keys(grouped)
-  const clusters = [...new Set(data.map(d => d[clusterCol] || 'Default'))]
-  const allValues = data.map(d => Number(d[yCol]) || 0)
+  const clusters = effectiveClusterCol
+    ? [...new Set(data.map(d => d[effectiveClusterCol] || 'Default'))]
+    : ['Default']
+  const allValues = data.map(d => Number(d[valueCol]) || 0)
   const max = Math.max(...allValues) * 1.1 || 1
+  const chartH = h - pad.t - pad.b
 
   const categoryWidth = (w - pad.l - pad.r) / categories.length
   const clusterWidth = categoryWidth * 0.8 / clusters.length
   const gap = categoryWidth * 0.2
   const elements = []
 
+  // Draw horizontal gridlines and Y-axis labels
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 0.5
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (i / 4) * chartH
+    ctx.beginPath()
+    ctx.moveTo(pad.l, y)
+    ctx.lineTo(w - pad.r, y)
+    ctx.stroke()
+
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '9px sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText(formatValue(max * (4 - i) / 4), pad.l - 8, y + 3)
+  }
+
   categories.forEach((category, catIdx) => {
     clusters.forEach((cluster, clusterIdx) => {
       const value = grouped[category][cluster] || 0
       const x = pad.l + catIdx * categoryWidth + gap / 2 + clusterIdx * clusterWidth
-      const barH = (value / max) * (h - pad.t - pad.b)
+      const barH = (value / max) * chartH
 
       ctx.fillStyle = CHART_COLORS[clusterIdx % CHART_COLORS.length]
-      ctx.fillRect(x, h - pad.b - barH, clusterWidth, barH)
+      ctx.beginPath()
+      drawRoundRect(ctx, x, h - pad.b - barH, clusterWidth, barH, [3, 3, 0, 0])
+      ctx.fill()
 
       elements.push({
         type: 'bar',
@@ -667,20 +731,42 @@ const renderClusteredBarChart = (ctx, data, chartConfig, w, h, pad) => {
         y: h - pad.b - barH,
         width: clusterWidth,
         height: barH,
-        label: `${category} - ${cluster}`,
+        label: clusters.length > 1 ? `${category} - ${cluster}` : category,
         formattedValue: formatValue(value)
       })
     })
   })
 
-  // Draw category labels
-  ctx.fillStyle = '#64748b'
+  // Draw X-axis labels with rotation and stepping to prevent overlap
+  ctx.fillStyle = '#475569'
   ctx.font = '9px sans-serif'
-  ctx.textAlign = 'center'
+  const maxLabelLen = Math.max(8, Math.floor(categoryWidth / 5))
+  const labelStep = categories.length > 10 ? Math.ceil(categories.length / 10) : 1
   categories.forEach((cat, i) => {
+    if (i % labelStep !== 0 && i !== categories.length - 1) return
     const x = pad.l + i * categoryWidth + categoryWidth / 2
-    ctx.fillText(String(cat).substring(0, 10), x, h - pad.b + 15)
+    ctx.save()
+    ctx.translate(x, h - pad.b + 10)
+    ctx.rotate(-Math.PI / 6)
+    ctx.textAlign = 'right'
+    const labelText = String(cat).length > maxLabelLen ? String(cat).substring(0, maxLabelLen - 1) + '\u2026' : String(cat)
+    ctx.fillText(labelText, 0, 0)
+    ctx.restore()
   })
+
+  // Draw legend for clusters (only when there are multiple clusters)
+  if (clusters.length > 1) {
+    ctx.font = '9px sans-serif'
+    ctx.textAlign = 'left'
+    let legendX = pad.l
+    clusters.forEach((cluster, i) => {
+      ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length]
+      ctx.fillRect(legendX, pad.t - 12, 8, 8)
+      ctx.fillStyle = '#64748b'
+      ctx.fillText(String(cluster).substring(0, 15), legendX + 11, pad.t - 5)
+      legendX += ctx.measureText(String(cluster).substring(0, 15)).width + 22
+    })
+  }
 
   return elements
 }

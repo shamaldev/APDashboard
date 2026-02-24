@@ -138,12 +138,9 @@ const ChatMessage = ({
               )}
 
               {/* Assessment badge */}
-              <div className={`flex items-start gap-2 p-2.5 rounded-lg border ${style.bg} ${style.border}`}>
-                <span className={`mt-0.5 ${style.text}`}>{style.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <span className={`text-[10px] font-bold uppercase ${style.text}`}>{style.label}</span>
-                  <div className="text-[11px] text-slate-700 mt-0.5 leading-relaxed">{diag.assessment_text}</div>
-                </div>
+              <div className={`p-2.5 rounded-lg border ${style.bg} ${style.border}`}>
+                <span className={`text-[10px] font-bold uppercase ${style.text}`}>{style.label}</span>
+                <div className="text-[11px] text-slate-700 mt-0.5 leading-relaxed">{diag.assessment_text}</div>
               </div>
 
               {/* Key Metrics */}
